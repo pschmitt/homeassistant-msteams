@@ -93,6 +93,46 @@ async def test_auth_refresh_tokens_success():
 
 
 @pytest.mark.asyncio
+async def test_auth_refresh_tokens_callback():
+    """Test that on_tokens_refreshed callback is invoked with exported data."""
+    mock_session = MagicMock()
+    token_resp = AsyncMock()
+    token_resp.status = 200
+    token_resp.json = AsyncMock(
+        return_value={
+            "access_token": "mock_access_token",
+            "refresh_token": "mock_new_refresh_token",
+            "expires_in": 3600,
+        }
+    )
+    skype_resp = AsyncMock()
+    skype_resp.status = 200
+    skype_resp.json = AsyncMock(return_value={"tokens": {"skypeToken": "mock_skype_token"}})
+
+    mock_session.post.side_effect = [
+        AsyncMock(__aenter__=AsyncMock(return_value=token_resp)),
+        AsyncMock(__aenter__=AsyncMock(return_value=token_resp)),
+        AsyncMock(__aenter__=AsyncMock(return_value=token_resp)),
+        AsyncMock(__aenter__=AsyncMock(return_value=skype_resp)),
+    ]
+
+    callback_data = []
+
+    def on_refresh(data):
+        callback_data.append(data)
+
+    auth = TeamsAuth(
+        session=mock_session,
+        refresh_token="initial_refresh_token",
+        on_tokens_refreshed=on_refresh,
+    )
+    await auth.async_refresh_tokens()
+
+    assert len(callback_data) == 1
+    assert callback_data[0]["refresh_token"] == "mock_new_refresh_token"
+
+
+@pytest.mark.asyncio
 async def test_auth_refresh_tokens_failure():
     """Test handling of 401 unauthorized token refresh failure."""
     mock_session = MagicMock()

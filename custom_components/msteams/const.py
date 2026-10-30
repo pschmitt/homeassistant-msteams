@@ -8,6 +8,9 @@ DOMAIN = "msteams"
 CONF_CREDENTIALS_FILE = "credentials_file"
 CONF_DEFAULT_CONVERSATION_ID = "default_conversation_id"
 CONF_POLL_INTERVAL = "poll_interval"
+CONF_BROWSER_DAEMON_URL = "browser_daemon_url"
+CONF_BROWSER_DAEMON_PROFILE = "browser_daemon_profile"
+CONF_BROWSER_DAEMON_SECRET = "browser_daemon_secret"
 
 # Stored token state keys
 CONF_SESSION_STATE = "session_state"

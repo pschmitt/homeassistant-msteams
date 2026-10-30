@@ -68,7 +68,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"{DOMAIN}_{entry.entry_id}_refresh",
     )
 
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    current_options = dict(entry.options)
+
+    async def async_options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
+        nonlocal current_options
+        if updated_entry.options != current_options:
+            current_options = dict(updated_entry.options)
+            await hass.config_entries.async_reload(updated_entry.entry_id)
+
+    entry.async_on_unload(entry.add_update_listener(async_options_updated))
     return True
 
 

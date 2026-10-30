@@ -66,6 +66,21 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sent_reminders: set[str] = set()
         self._event_listeners: list[Any] = []
 
+        # Persist rotated tokens to config entry whenever they refresh
+        self.client.auth.on_tokens_refreshed = self._handle_tokens_refreshed
+
+    @callback
+    def _handle_tokens_refreshed(self, exported: dict[str, Any]) -> None:
+        """Persist refreshed tokens back into ConfigEntry data."""
+        if not self.hass or not self.entry:
+            return
+        new_data = {
+            **self.entry.data,
+            **exported,
+        }
+        _LOGGER.debug("Persisting rotated Microsoft Teams tokens to config entry")
+        self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+
     def register_event_listener(self, listener: Any) -> callback:
         """Register a callback for meeting lifecycle events."""
         self._event_listeners.append(listener)

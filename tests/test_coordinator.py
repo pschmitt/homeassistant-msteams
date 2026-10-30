@@ -91,3 +91,24 @@ async def test_coordinator_update_data_and_events():
     data2 = await coordinator._async_update_data()
     assert data2["in_a_meeting"] is False
     assert EVENT_MEETING_ENDED in [e[0] for e in fired_events]
+
+
+def test_coordinator_token_persistence():
+    """Verify coordinator registers callback and updates entry data on token refresh."""
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.data = {"refresh_token": "old_token", "tenant_id": "test"}
+    entry.options = {}
+    client = MagicMock()
+    auth = MagicMock()
+    client.auth = auth
+
+    coordinator = TeamsDataUpdateCoordinator(hass, entry, client)
+
+    assert auth.on_tokens_refreshed is not None
+    auth.on_tokens_refreshed({"refresh_token": "new_rotated_token"})
+
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry,
+        data={"refresh_token": "new_rotated_token", "tenant_id": "test"},
+    )

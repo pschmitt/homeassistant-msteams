@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+from collections.abc import Callable
 import json
 import logging
 import os
@@ -101,6 +103,7 @@ class TeamsAuth:
         user_mri: str | None = None,
         user_display_name: str | None = None,
         user_email: str | None = None,
+        on_tokens_refreshed: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         self.session = session
         self.refresh_token = refresh_token
@@ -109,6 +112,7 @@ class TeamsAuth:
         self.user_mri = user_mri
         self.user_display_name = user_display_name or "User"
         self.user_email = user_email
+        self.on_tokens_refreshed = on_tokens_refreshed
 
         self.substrate_token: str | None = None
         self.spaces_token: str | None = None
@@ -204,6 +208,15 @@ class TeamsAuth:
                 self.user_email = jwt.get("upn") or jwt.get("email")
 
         _LOGGER.info("Successfully refreshed Microsoft Teams tokens for %s", self.user_display_name)
+
+        if self.on_tokens_refreshed:
+            try:
+                res = self.on_tokens_refreshed(self.export_data())
+                if asyncio.iscoroutine(res):
+                    await res
+            except Exception as err:
+                _LOGGER.warning("Error in on_tokens_refreshed callback: %s", err)
+
         return True
 
     async def _async_exchange_skype_token(self, spaces_access_token: str) -> None:
