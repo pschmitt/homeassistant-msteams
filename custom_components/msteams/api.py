@@ -19,6 +19,8 @@ import aiohttp
 
 from .const import (
     AUTHSVC_ENDPOINT,
+    DEFAULT_BROWSER_DAEMON_URL,
+    DEFAULT_PROFILE,
     DEFAULT_REGION,
     DEFAULT_TEAMS_BASE_URL,
     REACTIONS,
@@ -265,8 +267,16 @@ class TeamsAuth:
                 "user_mri": data.get("user_mri"),
             }
 
-        # Session state format (Playwright/msteams-mcp storage state)
-        origins = data.get("origins", [])
+        # Extract from local_storage dict (browser-daemon export) or origins list (Playwright/MCP)
+        raw_storage_values: list[str] = []
+        if "local_storage" in data and isinstance(data["local_storage"], dict):
+            raw_storage_values.extend(data["local_storage"].values())
+        if "origins" in data and isinstance(data["origins"], list):
+            for origin in data["origins"]:
+                for item in origin.get("localStorage", []):
+                    if item.get("value"):
+                        raw_storage_values.append(item["value"])
+
         refresh_token = None
         tenant_id = None
         client_id = TEAMS_CLIENT_ID
@@ -274,28 +284,45 @@ class TeamsAuth:
         user_email = None
         user_mri = None
 
-        for origin in origins:
-            local_storage = origin.get("localStorage", [])
-            for item in local_storage:
-                val_str = item.get("value")
-                if not val_str:
-                    continue
-                try:
-                    entry = json.loads(val_str)
-                    cred_type = entry.get("credentialType")
-                    if cred_type == "RefreshToken" and entry.get("secret"):
-                        refresh_token = entry.get("secret")
-                        client_id = entry.get("clientId") or client_id
-                    elif cred_type == "Account":
-                        user_display_name = entry.get("name") or user_display_name
-                        user_email = entry.get("username") or user_email
-                        user_mri = entry.get("localAccountId") or user_mri
-                        if not tenant_id and entry.get("realm"):
-                            tenant_id = entry.get("realm")
-                    elif cred_type == "AccessToken" and not tenant_id and entry.get("realm"):
+        for val_str in raw_storage_values:
+            try:
+                entry = json.loads(val_str)
+                cred_type = entry.get("credentialType")
+                if cred_type == "RefreshToken" and entry.get("secret"):
+                    refresh_token = entry.get("secret")
+                    client_id = entry.get("clientId") or client_id
+                elif cred_type == "Account":
+                    user_display_name = entry.get("name") or user_display_name
+                    user_email = entry.get("username") or user_email
+                    user_mri = entry.get("localAccountId") or user_mri
+                    if not tenant_id and entry.get("realm"):
                         tenant_id = entry.get("realm")
-                except Exception:
-                    continue
+                elif cred_type == "IdToken":
+                    if not tenant_id and entry.get("realm"):
+                        tenant_id = entry.get("realm")
+                    if entry.get("secret"):
+                        id_payload = _decode_jwt_payload(entry["secret"])
+                        user_display_name = (
+                            id_payload.get("name")
+                            or user_display_name
+                        )
+                        user_email = (
+                            id_payload.get("preferred_username")
+                            or id_payload.get("upn")
+                            or id_payload.get("email")
+                            or user_email
+                        )
+                        user_mri = (
+                            id_payload.get("oid")
+                            or id_payload.get("sub")
+                            or user_mri
+                        )
+                        if not tenant_id and id_payload.get("tid"):
+                            tenant_id = id_payload.get("tid")
+                elif cred_type == "AccessToken" and not tenant_id and entry.get("realm"):
+                    tenant_id = entry.get("realm")
+            except Exception:
+                continue
 
         if refresh_token:
             return {
@@ -317,6 +344,123 @@ class TeamsAuth:
     ) -> TeamsAuth:
         """Create and authenticate TeamsAuth from a credentials file or dictionary."""
         creds = cls.parse_credentials(content_or_path)
+        auth = cls(
+            session=session,
+            refresh_token=creds["refresh_token"],
+            tenant_id=creds["tenant_id"],
+            client_id=creds.get("client_id", TEAMS_CLIENT_ID),
+            user_display_name=creds.get("user_display_name"),
+            user_email=creds.get("user_email"),
+            user_mri=creds.get("user_mri"),
+        )
+        await auth.async_refresh_tokens()
+        return auth
+
+    @classmethod
+    async def async_from_browser_daemon(
+        cls,
+        session: aiohttp.ClientSession,
+        browser_daemon_url: str | None = None,
+        profile: str = DEFAULT_PROFILE,
+        secret: str | None = None,
+        hass: Any | None = None,
+    ) -> TeamsAuth:
+        """Acquire credentials automatically via browser-daemon."""
+        bd_client = None
+        if hass is not None:
+            try:
+                from custom_components.browser_daemon import async_get_client
+
+                bd_client = async_get_client(hass)
+            except Exception as err:
+                _LOGGER.debug("Could not get browser-daemon client from hass: %s", err)
+
+        if bd_client is None:
+            try:
+                from custom_components.browser_daemon.api import BrowserDaemonClient
+            except ImportError as err:
+                raise TeamsAuthError("browser_daemon integration not available") from err
+
+            url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
+            bd_client = BrowserDaemonClient(
+                session=session,
+                base_url=url,
+                cluster_secret=secret,
+            )
+
+        # 1. Check existing sessions
+        try:
+            sessions = await bd_client.async_list_sessions()
+        except Exception as err:
+            raise TeamsAuthError(f"Failed to connect to browser-daemon: {err}") from err
+
+        matching_session = next((s for s in sessions if s.get("profile") == profile), None)
+        created_session_id: str | None = None
+        session_id: str | None = None
+
+        if matching_session:
+            session_id = matching_session["id"]
+        else:
+            try:
+                session_info = await bd_client.async_create_session(
+                    profile=profile,
+                    engine="chromium",
+                    default_tabs=False,
+                )
+                created_session_id = session_info["id"]
+                session_id = created_session_id
+            except Exception as err:
+                raise TeamsAuthError(f"Failed to start browser-daemon session for profile '{profile}': {err}") from err
+
+        tab_id: str | None = None
+        opened_new_tab = False
+        try:
+            # 2. Check open tabs
+            tabs = await bd_client.async_get_tabs()
+            for t in tabs:
+                t_session = t.get("session_id")
+                t_url = t.get("url", "")
+                if (session_id is None or t_session == session_id) and (
+                    "teams.microsoft.com" in t_url or "login.microsoftonline.com" in t_url
+                ):
+                    tab_id = t.get("id")
+                    break
+
+            if not tab_id:
+                new_tab = await bd_client.async_open_tab(
+                    DEFAULT_TEAMS_BASE_URL, session_id=session_id
+                )
+                tab_id = new_tab.get("id")
+                opened_new_tab = True
+                # Allow a short period for session storage / auth state to load
+                await asyncio.sleep(4)
+
+            # 3. Export auth
+            auth_data = await bd_client.async_export_auth(
+                tab_id, session_id=session_id, storage=True
+            )
+            creds = cls.parse_credentials(auth_data)
+
+        except TeamsAuthError:
+            raise
+        except Exception as err:
+            raise TeamsAuthError(f"Failed to extract Teams auth from browser-daemon: {err}") from err
+        finally:
+            if created_session_id:
+                try:
+                    await bd_client.async_delete_session(created_session_id)
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Failed to clean up temporary browser session %s: %s",
+                        created_session_id,
+                        err,
+                    )
+            elif opened_new_tab and tab_id:
+                try:
+                    await bd_client.async_close_tab(tab_id)
+                except Exception as err:
+                    _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
+
         auth = cls(
             session=session,
             refresh_token=creds["refresh_token"],

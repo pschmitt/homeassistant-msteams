@@ -3,18 +3,31 @@
     "step": {
       "user": {
         "title": "Microsoft Teams",
-        "description": "Authentifizierung über Anmeldedatei oder OAuth-Refresh-Token.",
+        "description": "Automatisch über Browser Daemon authentifizieren oder eine Anmeldedatei bzw. ein OAuth-Refresh-Token angeben.",
         "data": {
+          "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
+          "browser_daemon_profile": "Browser Daemon Profilname",
           "credentials_file": "Pfad zur Anmeldedatei (z.B. /config/teams_credentials.json)",
           "refresh_token": "OAuth-Refresh-Token",
           "tenant_id": "Mandanten-ID (Tenant ID)",
           "user_display_name": "Anzeigename",
           "default_conversation_id": "Standard-Konversations-ID (optional)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Microsoft Teams erneut authentifizieren",
+        "description": "Authentifizierungs-Token über Browser Daemon neu laden oder aktualisierte Anmeldedaten angeben.",
+        "data": {
+          "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
+          "browser_daemon_profile": "Browser Daemon Profilname",
+          "credentials_file": "Pfad zur Anmeldedatei",
+          "refresh_token": "OAuth-Refresh-Token",
+          "tenant_id": "Mandanten-ID (Tenant ID)"
+        }
       }
     },
     "error": {
-      "missing_credentials": "Bitte geben Sie entweder eine Anmeldedatei oder ein Refresh-Token an.",
+      "missing_credentials": "Bitte Browser Daemon Import wählen oder eine Anmeldedatei bzw. ein Refresh-Token angeben.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
       "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen."
     },

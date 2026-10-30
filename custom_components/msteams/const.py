@@ -5,12 +5,19 @@ from homeassistant.const import Platform
 DOMAIN = "msteams"
 
 # Configuration keys
+CONF_AUTH_METHOD = "auth_method"
+CONF_USE_BROWSER_DAEMON = "use_browser_daemon"
 CONF_CREDENTIALS_FILE = "credentials_file"
 CONF_DEFAULT_CONVERSATION_ID = "default_conversation_id"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_BROWSER_DAEMON_URL = "browser_daemon_url"
 CONF_BROWSER_DAEMON_PROFILE = "browser_daemon_profile"
 CONF_BROWSER_DAEMON_SECRET = "browser_daemon_secret"
+
+# Auth methods
+AUTH_METHOD_BROWSER_DAEMON = "browser_daemon"
+AUTH_METHOD_CREDENTIALS_FILE = "credentials_file"
+AUTH_METHOD_REFRESH_TOKEN = "refresh_token"
 
 # Stored token state keys
 CONF_SESSION_STATE = "session_state"
@@ -23,6 +30,7 @@ CONF_USER_EMAIL = "user_email"
 
 # Defaults
 DEFAULT_PROFILE = "work"
+DEFAULT_BROWSER_DAEMON_URL = "https://browser.fnuc.ts.brkn.lol"
 DEFAULT_POLL_INTERVAL = 30
 DEFAULT_REGION = "emea"
 DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"

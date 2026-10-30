@@ -17,6 +17,7 @@ from .const import (
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_BROWSER_DAEMON_SECRET,
     CONF_BROWSER_DAEMON_URL,
+    DEFAULT_BROWSER_DAEMON_URL,
     DEFAULT_PROFILE,
     DOMAIN,
 )
@@ -53,6 +54,7 @@ class TeamsAuthRepairFlow(RepairsFlow):
                     browser_daemon_url=daemon_url,
                     profile=profile,
                     secret=secret,
+                    hass=self.hass,
                 )
                 # Update config entry with refreshed auth state
                 new_data = {
@@ -76,7 +78,7 @@ class TeamsAuthRepairFlow(RepairsFlow):
                 vol.Required(
                     CONF_BROWSER_DAEMON_URL,
                     default=entry.data.get(
-                        CONF_BROWSER_DAEMON_URL, "https://browser.rofl-14.netbird.cloud"
+                        CONF_BROWSER_DAEMON_URL, DEFAULT_BROWSER_DAEMON_URL
                     ),
                 ): str,
                 vol.Optional(

@@ -3,18 +3,31 @@
     "step": {
       "user": {
         "title": "Microsoft Teams",
-        "description": "Authenticate using a credentials file path or OAuth refresh token.",
+        "description": "Authenticate automatically using Browser Daemon, or provide a credentials file or OAuth refresh token.",
         "data": {
+          "use_browser_daemon": "Import authentication from Browser Daemon",
+          "browser_daemon_profile": "Browser Daemon Profile",
           "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
           "refresh_token": "OAuth refresh token",
           "tenant_id": "Tenant ID",
           "user_display_name": "User display name",
           "default_conversation_id": "Default Conversation ID (optional)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Microsoft Teams",
+        "description": "Re-acquire authentication tokens from Browser Daemon or provide updated credentials.",
+        "data": {
+          "use_browser_daemon": "Import authentication from Browser Daemon",
+          "browser_daemon_profile": "Browser Daemon Profile",
+          "credentials_file": "Credentials file path",
+          "refresh_token": "OAuth refresh token",
+          "tenant_id": "Tenant ID"
+        }
       }
     },
     "error": {
-      "missing_credentials": "Please provide either a credentials file or a refresh token.",
+      "missing_credentials": "Please select Browser Daemon import, or provide a credentials file or refresh token.",
       "auth_failed": "Authentication failed or token invalid.",
       "cannot_connect": "Could not connect to Microsoft Teams endpoint."
     },
