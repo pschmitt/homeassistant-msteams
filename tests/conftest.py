@@ -74,6 +74,10 @@ if "homeassistant" not in sys.modules:
             return {"type": "abort", "reason": reason}
 
     class OptionsFlow:
+        @property
+        def config_entry(self):
+            return self.hass.config_entries.async_get_known_entry(self.handler)
+
         def async_create_entry(self, title, data):
             return {"type": "create_entry", "title": title, "data": data}
 
@@ -88,6 +92,11 @@ if "homeassistant" not in sys.modules:
 
     # data_entry_flow
     data_entry_flow = types.ModuleType("homeassistant.data_entry_flow")
+
+    class AbortFlow(Exception):
+        pass
+
+    data_entry_flow.AbortFlow = AbortFlow
     data_entry_flow.FlowResult = dict
     sys.modules["homeassistant.data_entry_flow"] = data_entry_flow
     ha.data_entry_flow = data_entry_flow
@@ -107,11 +116,14 @@ if "homeassistant" not in sys.modules:
         pass
 
     class DataUpdateCoordinator[T]:
-        def __init__(self, hass, logger, *, name, update_interval=None):
+        def __init__(
+            self, hass, logger, *, name=None, update_interval=None, config_entry=None, **kwargs
+        ):
             self.hass = hass
             self.logger = logger
             self.name = name
             self.update_interval = update_interval
+            self.config_entry = config_entry
             self.data = None
             self.last_update_success = True
 
