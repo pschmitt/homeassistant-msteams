@@ -95,7 +95,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now = datetime.now(UTC)
             meetings = await self.client.get_calendar_meetings(
                 start_date=now - timedelta(minutes=30),
-                end_date=now + timedelta(days=2),
+                end_date=now + timedelta(days=7),
                 limit=15,
             )
 
