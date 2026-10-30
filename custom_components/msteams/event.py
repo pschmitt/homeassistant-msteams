@@ -43,7 +43,7 @@ class TeamsMeetingEvent(TeamsEntity, EventEntity):
         @callback
         def _handle_coordinator_event(event_type: str, event_data: dict[str, Any]) -> None:
             if event_type in self._attr_event_types:
-                self._async_handle_event(event_type, event_data)
+                self._trigger_event(event_type, event_data)
                 self.async_write_ha_state()
 
         self._remove_listener = self.coordinator.register_event_listener(_handle_coordinator_event)

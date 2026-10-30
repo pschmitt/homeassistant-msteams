@@ -235,7 +235,7 @@ if "homeassistant" not in sys.modules:
     event = types.ModuleType("homeassistant.components.event")
 
     class EventEntity:
-        def _async_handle_event(self, event_type, event_data=None):
+        def _trigger_event(self, event_type, event_data=None):
             self._last_event_type = event_type
             self._last_event_data = event_data
 
