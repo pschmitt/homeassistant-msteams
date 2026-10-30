@@ -190,6 +190,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 active_meeting = {
                     "id": active_call.get("thread_id"),
+                    "thread_id": active_call.get("thread_id"),
                     "subject": active_call.get("title"),
                     "join_url": active_call.get("url"),
                     "start_time": active_call.get("call_start_time"),
