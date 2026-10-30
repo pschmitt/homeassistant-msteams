@@ -161,7 +161,11 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ) or presence.get("availability") in ("InAMeeting", "InACall")
 
         in_a_meeting = (active_meeting is not None) or is_in_meeting_by_presence
-        active_title = active_meeting.get("subject") if active_meeting else ""
+        active_title = (
+            active_meeting.get("subject")
+            if active_meeting
+            else ("In a Call" if is_in_meeting_by_presence else "")
+        )
         active_url = active_meeting.get("join_url") if active_meeting else ""
 
         current_meeting_id = (active_meeting.get("id") if active_meeting else None) or (

@@ -52,9 +52,15 @@ class TeamsInMeetingBinarySensor(TeamsEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return attributes including active title and join URL."""
         data = self.coordinator.data or {}
+        title = data.get("meeting_title")
+        url = data.get("meeting_url")
         return {
-            "title": data.get("meeting_title"),
-            "url": data.get("meeting_url"),
+            "title": title,
+            "meeting_title": title,
+            "meeting_name": title,
+            "url": url,
+            "meeting_url": url,
+            "join_url": url,
         }
 
 

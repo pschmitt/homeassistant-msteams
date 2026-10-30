@@ -114,10 +114,16 @@ class TeamsActiveMeetingSensor(TeamsEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return active meeting attributes."""
         data = self.coordinator.data or {}
+        title = data.get("meeting_title")
+        url = data.get("meeting_url")
         return {
             "in_meeting": data.get("in_a_meeting", False),
-            "meeting_title": data.get("meeting_title"),
-            "meeting_url": data.get("meeting_url"),
+            "meeting_title": title,
+            "meeting_name": title,
+            "title": title,
+            "meeting_url": url,
+            "url": url,
+            "join_url": url,
             "active_calendar_meeting": (data.get("active_meeting") or {}).get("subject"),
         }
 
