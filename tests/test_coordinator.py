@@ -83,6 +83,9 @@ async def test_coordinator_update_data_and_events():
 
     # End meeting on next refresh
     client.get_calendar_meetings = AsyncMock(return_value=[])
+    client.get_presence = AsyncMock(
+        return_value={"availability": "Available", "activity": "Available", "status_message": ""}
+    )
     data2 = await coordinator._async_update_data()
     assert data2["in_a_meeting"] is False
     assert EVENT_MEETING_ENDED in [e[0] for e in fired_events]

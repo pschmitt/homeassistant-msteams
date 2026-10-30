@@ -14,7 +14,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import TeamsApiClient, TeamsAuthError
 from .const import (
-    CONF_ENABLE_MEETING_CONTROLS,
     CONF_POLL_INTERVAL,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
@@ -42,7 +41,7 @@ def _parse_iso(iso_str: str | None) -> datetime | None:
 
 
 class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator to manage fetching Teams data from APIs and browser-daemon."""
+    """Coordinator to manage fetching Teams data from private APIs."""
 
     def __init__(
         self,
@@ -59,12 +58,9 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"Microsoft Teams ({entry.title})",
             update_interval=timedelta(seconds=poll_interval),
-        )
-        self.enable_meeting_controls = entry.options.get(
-            CONF_ENABLE_MEETING_CONTROLS,
-            entry.data.get(CONF_ENABLE_MEETING_CONTROLS, True),
         )
         self._previous_meeting_id: str | None = None
         self._sent_reminders: set[str] = set()
@@ -105,16 +101,6 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # 3. Fetch Unread Chats Count
             unread_count = await self.client.get_unread_chats_count()
-
-            # 4. Fetch Live Browser-Daemon Meeting Status (if enabled)
-            live_status = {
-                "in_meeting": False,
-                "is_muted": False,
-                "title": "",
-                "url": "",
-            }
-            if self.enable_meeting_controls and self.client.browser_daemon_url:
-                live_status = await self.client.get_live_meeting_status()
 
             # Clear any previously registered auth issues
             ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
@@ -167,14 +153,16 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         },
                     )
 
-        # Merge live browser-daemon meeting status with calendar status
-        in_a_meeting = live_status["in_meeting"] or (active_meeting is not None)
-        active_title = live_status["title"] or (
-            active_meeting.get("subject") if active_meeting else ""
-        )
-        active_url = live_status["url"] or (
-            active_meeting.get("join_url") if active_meeting else ""
-        )
+        # Merge presence and calendar status
+        is_in_meeting_by_presence = presence.get("activity") in (
+            "InAMeeting",
+            "InACall",
+            "InAConferenceCall",
+        ) or presence.get("availability") in ("InAMeeting", "InACall")
+
+        in_a_meeting = (active_meeting is not None) or is_in_meeting_by_presence
+        active_title = active_meeting.get("subject") if active_meeting else ""
+        active_url = active_meeting.get("join_url") if active_meeting else ""
 
         current_meeting_id = (active_meeting.get("id") if active_meeting else None) or (
             active_title if in_a_meeting else None
@@ -209,9 +197,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "in_a_meeting": in_a_meeting,
             "meeting_title": active_title,
             "meeting_url": active_url,
-            "meeting_muted": live_status.get("is_muted", False),
             "unread_chats": unread_count,
-            "live_status": live_status,
             "user_mri": self.client.auth.user_mri,
             "user_display_name": self.client.auth.user_display_name,
             "user_email": self.client.auth.user_email,

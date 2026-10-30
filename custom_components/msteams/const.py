@@ -5,12 +5,9 @@ from homeassistant.const import Platform
 DOMAIN = "msteams"
 
 # Configuration keys
-CONF_BROWSER_DAEMON_URL = "browser_daemon_url"
-CONF_BROWSER_DAEMON_PROFILE = "browser_daemon_profile"
-CONF_BROWSER_DAEMON_SECRET = "browser_daemon_secret"
+CONF_CREDENTIALS_FILE = "credentials_file"
 CONF_DEFAULT_CONVERSATION_ID = "default_conversation_id"
 CONF_POLL_INTERVAL = "poll_interval"
-CONF_ENABLE_MEETING_CONTROLS = "enable_meeting_controls"
 
 # Stored token state keys
 CONF_SESSION_STATE = "session_state"

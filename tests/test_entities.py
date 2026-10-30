@@ -9,11 +9,9 @@ import pytest
 from custom_components.msteams.binary_sensor import (
     TeamsConnectedBinarySensor,
     TeamsInMeetingBinarySensor,
-    TeamsMeetingMutedBinarySensor,
 )
 from custom_components.msteams.button import (
     TeamsRefreshTokenButton,
-    TeamsToggleMuteButton,
 )
 from custom_components.msteams.notify import TeamsNotifyEntity
 from custom_components.msteams.sensor import (
@@ -57,7 +55,6 @@ def mock_coordinator():
         "in_a_meeting": True,
         "meeting_title": "Daily Standup",
         "meeting_url": "https://teams.microsoft.com/meet/standup",
-        "meeting_muted": True,
         "unread_chats": 5,
         "user_display_name": "Alice Smith",
         "user_email": "alice@example.com",
@@ -84,14 +81,10 @@ def test_sensors(mock_coordinator):
 
 
 def test_binary_sensors(mock_coordinator):
-    """Test in_a_meeting, meeting_muted, and connected binary sensors."""
+    """Test in_a_meeting and connected binary sensors."""
     in_meeting = TeamsInMeetingBinarySensor(mock_coordinator)
     assert in_meeting.is_on is True
     assert in_meeting.extra_state_attributes["title"] == "Daily Standup"
-
-    muted = TeamsMeetingMutedBinarySensor(mock_coordinator)
-    assert muted.is_on is True
-    assert muted.icon == "mdi:microphone-off"
 
     connected = TeamsConnectedBinarySensor(mock_coordinator)
     assert connected.is_on is True
@@ -99,18 +92,13 @@ def test_binary_sensors(mock_coordinator):
 
 @pytest.mark.asyncio
 async def test_buttons(mock_coordinator):
-    """Test button presses for token refresh and toggle mute."""
+    """Test button press for token refresh."""
     mock_coordinator.client.auth.async_refresh_tokens = AsyncMock()
     mock_coordinator.async_request_refresh = AsyncMock()
     refresh_btn = TeamsRefreshTokenButton(mock_coordinator)
     await refresh_btn.async_press()
     mock_coordinator.client.auth.async_refresh_tokens.assert_awaited_once()
     mock_coordinator.async_request_refresh.assert_awaited_once()
-
-    mock_coordinator.client.toggle_meeting_mute = AsyncMock(return_value=True)
-    mute_btn = TeamsToggleMuteButton(mock_coordinator)
-    await mute_btn.async_press()
-    mock_coordinator.client.toggle_meeting_mute.assert_awaited_once()
 
 
 @pytest.mark.asyncio

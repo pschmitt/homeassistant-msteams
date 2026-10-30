@@ -28,7 +28,6 @@ async def async_setup_entry(
     async_add_entities(
         [
             TeamsInMeetingBinarySensor(coordinator),
-            TeamsMeetingMutedBinarySensor(coordinator),
             TeamsConnectedBinarySensor(coordinator),
         ]
     )
@@ -57,27 +56,6 @@ class TeamsInMeetingBinarySensor(TeamsEntity, BinarySensorEntity):
             "title": data.get("meeting_title"),
             "url": data.get("meeting_url"),
         }
-
-
-class TeamsMeetingMutedBinarySensor(TeamsEntity, BinarySensorEntity):
-    """Binary sensor indicating if microphone is currently muted in meeting."""
-
-    _attr_translation_key = "meeting_muted"
-    _attr_icon = "mdi:microphone-off"
-
-    def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
-        super().__init__(coordinator, "meeting_muted")
-
-    @property
-    def is_on(self) -> bool:
-        """Return True if muted in active meeting."""
-        data = self.coordinator.data or {}
-        return bool(data.get("meeting_muted"))
-
-    @property
-    def icon(self) -> str:
-        """Dynamic icon based on mute state."""
-        return "mdi:microphone-off" if self.is_on else "mdi:microphone"
 
 
 class TeamsConnectedBinarySensor(TeamsEntity, BinarySensorEntity):

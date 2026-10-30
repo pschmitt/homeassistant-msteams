@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import random
 import re
 import time
@@ -141,6 +142,10 @@ class TeamsAuth:
             raise TeamsAuthError("No refresh token available to refresh authentication")
 
         token_url = TOKEN_ENDPOINT.format(tenantId=self.tenant_id)
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://teams.microsoft.com",
+        }
         scopes = [
             ("substrate", "https://substrate.office.com/.default offline_access"),
             ("spaces", "https://api.spaces.skype.com/.default offline_access"),
@@ -159,7 +164,9 @@ class TeamsAuth:
                 "scope": scope,
             }
             try:
-                async with self.session.post(token_url, data=data, timeout=15) as resp:
+                async with self.session.post(
+                    token_url, data=data, headers=headers, timeout=15
+                ) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         _LOGGER.warning(
@@ -201,13 +208,14 @@ class TeamsAuth:
 
     async def _async_exchange_skype_token(self, spaces_access_token: str) -> None:
         """Exchange Skype Spaces token for skypetoken via authsvc."""
-        payload = {
-            "claim_type": "urn:ietf:params:oauth:token-type:jwt",
-            "client_type": "SkypeSpaces",
-            "access_token": spaces_access_token,
+        headers = {
+            "Authorization": f"Bearer {spaces_access_token}",
+            "Content-Type": "application/json",
         }
         try:
-            async with self.session.post(AUTHSVC_ENDPOINT, json=payload, timeout=15) as resp:
+            async with self.session.post(
+                AUTHSVC_ENDPOINT, headers=headers, json={}, timeout=15
+            ) as resp:
                 if resp.status != 200:
                     text = await resp.text()
                     raise TeamsAuthError(f"Skype token exchange failed ({resp.status}): {text}")
@@ -219,140 +227,108 @@ class TeamsAuth:
             raise TeamsAuthError(f"Network error exchanging Skype token: {err}") from err
 
     @classmethod
-    async def async_from_browser_daemon(
-        cls,
-        session: aiohttp.ClientSession,
-        browser_daemon_url: str,
-        profile: str = "work",
-        secret: str | None = None,
-    ) -> TeamsAuth:
-        """Connect to browser-daemon to extract Teams session cookies & localStorage."""
-        base = browser_daemon_url.rstrip("/")
-        headers = {}
-        if secret:
-            headers["X-Browser-Cluster-Secret"] = secret
+    def parse_credentials(cls, content_or_path: str | dict[str, Any]) -> dict[str, Any]:
+        """Parse credentials from a file path, JSON string, or dict."""
+        data: dict[str, Any]
+        if isinstance(content_or_path, dict):
+            data = content_or_path
+        elif isinstance(content_or_path, str):
+            if os.path.isfile(content_or_path):
+                with open(content_or_path, encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = json.loads(content_or_path)
+        else:
+            raise TeamsAuthError("Invalid credentials format")
 
-        # 1. Fetch mesh overview to find node and running sessions
-        overview_url = f"{base}/api/mesh/overview"
-        async with session.get(overview_url, headers=headers, timeout=20) as resp:
-            if resp.status != 200:
-                raise TeamsAuthError(f"browser-daemon overview returned HTTP {resp.status}")
-            overview = await resp.json()
+        # Flat format with refresh_token
+        if "refresh_token" in data:
+            return {
+                "refresh_token": data["refresh_token"],
+                "tenant_id": data.get("tenant_id", "common"),
+                "client_id": data.get("client_id", TEAMS_CLIENT_ID),
+                "user_display_name": data.get("user_display_name"),
+                "user_email": data.get("user_email"),
+                "user_mri": data.get("user_mri"),
+            }
 
-        profiles = overview.get("profiles", [])
-        prof = next((p for p in profiles if p.get("name") == profile), None)
-        if not prof:
-            raise TeamsAuthError(f"browser-daemon profile '{profile}' not found")
-
-        node_name = prof.get("node_name")
-        node_url = (prof.get("node_url") or base).rstrip("/")
-        session_id = prof.get("session_id")
-        targets = overview.get("targets", [])
-
-        # Find existing Teams page target
-        target_page_id = None
-        for target in targets:
-            url = target.get("url", "")
-            if target.get("sessionId") == session_id and (
-                "teams.microsoft.com" in url or "teams.cloud.microsoft" in url
-            ):
-                target_page_id = target.get("id")
-                break
-
-        # If no page target, open Teams tab in session
-        if not target_page_id:
-            dev_prefix = (
-                ""
-                if node_name == overview.get("local_node", {}).get("name")
-                else f"/api/peers/{quote(node_name)}"
-            )
-            new_tab_url = (
-                f"{base}{dev_prefix}/json/new?url={quote('https://teams.microsoft.com/v2/')}"
-            )
-            if session_id:
-                new_tab_url += f"&session_id={session_id}"
-            async with session.put(new_tab_url, headers=headers, timeout=20) as resp:
-                if resp.status != 200:
-                    raise TeamsAuthError(
-                        f"Could not open Teams tab in browser-daemon: HTTP {resp.status}"
-                    )
-                tab_data = await resp.json()
-                target_page_id = tab_data.get("id")
-
-        if not target_page_id:
-            raise TeamsAuthError("Failed to locate or open Microsoft Teams page in browser-daemon")
-
-        # 2. Extract auth storage from page
-        auth_url = f"{node_url}/api/pages/{quote(target_page_id)}/auth"
-        auth_payload = {"session_id": session_id, "urls": [], "storage": True}
-        async with session.post(auth_url, headers=headers, json=auth_payload, timeout=25) as resp:
-            if resp.status != 200:
-                raise TeamsAuthError(
-                    f"Exporting page auth from browser-daemon failed: HTTP {resp.status}"
-                )
-            login_data = await resp.json()
-
-        local_storage = login_data.get("local_storage", {})
+        # Session state format (Playwright/msteams-mcp storage state)
+        origins = data.get("origins", [])
         refresh_token = None
         tenant_id = None
         client_id = TEAMS_CLIENT_ID
-        user_mri = None
         user_display_name = None
         user_email = None
+        user_mri = None
 
-        for key, val_str in local_storage.items():
-            try:
-                item = json.loads(val_str)
-                cred_type = item.get("credentialType")
-                if cred_type == "RefreshToken" and item.get("secret"):
-                    refresh_token = item.get("secret")
-                    client_id = item.get("clientId") or client_id
-                    home_account_id = item.get("homeAccountId", "")
-                    if "." in home_account_id:
-                        tenant_id = home_account_id.split(".")[1]
-                elif cred_type == "Account":
-                    user_display_name = item.get("name") or user_display_name
-                    user_email = item.get("username") or user_email
-                    user_mri = item.get("localAccountId") or user_mri
-                    if not tenant_id and item.get("realm"):
-                        tenant_id = item.get("realm")
-            except Exception:
-                continue
+        for origin in origins:
+            local_storage = origin.get("localStorage", [])
+            for item in local_storage:
+                val_str = item.get("value")
+                if not val_str:
+                    continue
+                try:
+                    entry = json.loads(val_str)
+                    cred_type = entry.get("credentialType")
+                    if cred_type == "RefreshToken" and entry.get("secret"):
+                        refresh_token = entry.get("secret")
+                        client_id = entry.get("clientId") or client_id
+                    elif cred_type == "Account":
+                        user_display_name = entry.get("name") or user_display_name
+                        user_email = entry.get("username") or user_email
+                        user_mri = entry.get("localAccountId") or user_mri
+                        if not tenant_id and entry.get("realm"):
+                            tenant_id = entry.get("realm")
+                    elif cred_type == "AccessToken" and not tenant_id and entry.get("realm"):
+                        tenant_id = entry.get("realm")
+                except Exception:
+                    continue
 
-        if not refresh_token:
-            raise TeamsAuthError("No RefreshToken found in browser-daemon Teams session storage")
+        if refresh_token:
+            return {
+                "refresh_token": refresh_token,
+                "tenant_id": tenant_id or "common",
+                "client_id": client_id,
+                "user_display_name": user_display_name,
+                "user_email": user_email,
+                "user_mri": user_mri,
+            }
 
+        raise TeamsAuthError("No valid refresh_token or session state found in credentials")
+
+    @classmethod
+    async def async_from_credentials(
+        cls,
+        session: aiohttp.ClientSession,
+        content_or_path: str | dict[str, Any],
+    ) -> TeamsAuth:
+        """Create and authenticate TeamsAuth from a credentials file or dictionary."""
+        creds = cls.parse_credentials(content_or_path)
         auth = cls(
             session=session,
-            refresh_token=refresh_token,
-            tenant_id=tenant_id or "common",
-            client_id=client_id,
-            user_mri=user_mri,
-            user_display_name=user_display_name,
-            user_email=user_email,
+            refresh_token=creds["refresh_token"],
+            tenant_id=creds["tenant_id"],
+            client_id=creds.get("client_id", TEAMS_CLIENT_ID),
+            user_display_name=creds.get("user_display_name"),
+            user_email=creds.get("user_email"),
+            user_mri=creds.get("user_mri"),
         )
         await auth.async_refresh_tokens()
         return auth
 
 
 class TeamsApiClient:
-    """API client for Microsoft Teams services and browser-daemon meeting controls."""
+    """API client for Microsoft Teams services."""
 
     def __init__(
         self,
         auth: TeamsAuth,
         region: str = DEFAULT_REGION,
         base_url: str = DEFAULT_TEAMS_BASE_URL,
-        browser_daemon_url: str | None = None,
-        browser_daemon_secret: str | None = None,
-        profile: str = "work",
     ) -> None:
         self.auth = auth
         self.region = region
         self.base_url = base_url.rstrip("/")
-        self.browser_daemon_url = browser_daemon_url.rstrip("/") if browser_daemon_url else None
-        self.browser_daemon_secret = browser_daemon_secret
-        self.profile = profile
 
     async def _ensure_auth(self) -> None:
         """Ensure auth is valid before making an API call."""
@@ -377,7 +353,7 @@ class TeamsApiClient:
     async def get_presence(self) -> dict[str, Any]:
         """Fetch current user presence and status message."""
         await self._ensure_auth()
-        url = f"{self.base_url}/api/mt/{self.region}/v2.0/me/presence"
+        url = "https://presence.teams.microsoft.com/v1/me/presence"
         try:
             async with self.auth.session.get(
                 url, headers=self._headers("middletier"), timeout=15
@@ -429,7 +405,7 @@ class TeamsApiClient:
                 raise TeamsApiError(f"Calendar API failed ({resp.status}): {text}")
             payload = await resp.json()
 
-        raw_meetings = payload.get("data", {}).get("value", [])
+        raw_meetings = payload.get("value") or payload.get("data", {}).get("value", [])
         meetings: list[dict[str, Any]] = []
         for raw in raw_meetings:
             meetings.append(
@@ -547,134 +523,3 @@ class TeamsApiClient:
             timeout=15,
         ) as resp:
             return resp.status in (200, 201)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Browser-Daemon Meeting Detection & Controls
-    # ─────────────────────────────────────────────────────────────────────────
-
-    async def _evaluate_on_teams_page(self, expression: str) -> Any:
-        """Run a JavaScript expression on an active Teams page in browser-daemon."""
-        if not self.browser_daemon_url:
-            return None
-
-        base = self.browser_daemon_url.rstrip("/")
-        headers = {}
-        if self.browser_daemon_secret:
-            headers["X-Browser-Cluster-Secret"] = self.browser_daemon_secret
-
-        # Fetch overview
-        async with self.auth.session.get(
-            f"{base}/api/mesh/overview", headers=headers, timeout=10
-        ) as resp:
-            if resp.status != 200:
-                return None
-            overview = await resp.json()
-
-        profiles = overview.get("profiles", [])
-        prof = next((p for p in profiles if p.get("name") == self.profile), None)
-        session_id = prof.get("session_id") if prof else None
-
-        # Look for active Teams page
-        targets = overview.get("targets", [])
-        target_page_id = None
-        for target in targets:
-            url = target.get("url", "")
-            if (not session_id or target.get("sessionId") == session_id) and (
-                "teams.microsoft.com" in url or "teams.cloud.microsoft" in url
-            ):
-                target_page_id = target.get("id")
-                break
-
-        if not target_page_id:
-            return None
-
-        node_name = prof.get("node_name") if prof else overview.get("local_node", {}).get("name")
-        dev_prefix = (
-            ""
-            if node_name == overview.get("local_node", {}).get("name")
-            else f"/api/peers/{quote(node_name)}"
-        )
-        eval_url = f"{base}{dev_prefix}/api/pages/{quote(target_page_id)}/eval"
-
-        payload = {"expression": expression}
-        async with self.auth.session.post(
-            eval_url, headers=headers, json=payload, timeout=10
-        ) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                return data.get("result", {}).get("value")
-        return None
-
-    async def get_live_meeting_status(self) -> dict[str, Any]:
-        """Detect live meeting status, mic mute state and title via browser-daemon."""
-        js_code = """
-        (() => {
-            const micBtn = document.querySelector('button#microphone-button, button[data-tid="microphone-button"], button[aria-label*="Mute" i], button[aria-label*="mic" i], button[aria-label*="Mikrofon" i]');
-            const callScreen = document.querySelector('[data-tid="calling-screen"], [data-tid="call-control-bar"], [data-tid="calling-dock"]');
-            const inMeeting = !!micBtn || !!callScreen || window.location.href.includes('meetup-join');
-
-            let isMuted = false;
-            if (micBtn) {
-                const label = (micBtn.getAttribute('aria-label') || '').toLowerCase();
-                isMuted = label.includes('unmute') || label.includes('aufheben') || micBtn.getAttribute('aria-pressed') === 'true';
-            }
-
-            const titleEl = document.querySelector('[data-tid="call-title"], h1');
-            let meetingTitle = titleEl ? titleEl.textContent.trim() : document.title;
-            meetingTitle = meetingTitle.replace(/ \\| Microsoft Teams$/i, '').trim();
-
-            return {
-                in_meeting: inMeeting,
-                is_muted: isMuted,
-                title: meetingTitle,
-                url: window.location.href
-            };
-        })()
-        """
-        try:
-            res = await self._evaluate_on_teams_page(js_code)
-            if isinstance(res, dict):
-                return res
-        except Exception as err:
-            _LOGGER.debug("Live meeting status evaluation failed: %s", err)
-
-        return {
-            "in_meeting": False,
-            "is_muted": False,
-            "title": "",
-            "url": "",
-        }
-
-    async def toggle_meeting_mute(self) -> bool:
-        """Toggle microphone mute in active Microsoft Teams meeting."""
-        js_code = """
-        (() => {
-            const micBtn = document.querySelector('button#microphone-button, button[data-tid="microphone-button"], button[aria-label*="Mute" i], button[aria-label*="mic" i], button[aria-label*="Mikrofon" i]');
-            if (micBtn) {
-                micBtn.click();
-                return true;
-            }
-            return false;
-        })()
-        """
-        res = await self._evaluate_on_teams_page(js_code)
-        return bool(res)
-
-    async def set_meeting_mute(self, mute: bool) -> bool:
-        """Set microphone mute state to muted or unmuted in active meeting."""
-        js_code = f"""
-        (() => {{
-            const micBtn = document.querySelector('button#microphone-button, button[data-tid="microphone-button"], button[aria-label*="Mute" i], button[aria-label*="mic" i], button[aria-label*="Mikrofon" i]');
-            if (!micBtn) return false;
-            const label = (micBtn.getAttribute('aria-label') || '').toLowerCase();
-            const currentMuted = label.includes('unmute') || label.includes('aufheben') || micBtn.getAttribute('aria-pressed') === 'true';
-            const desiredMuted = {"true" if mute else "false"};
-            if (currentMuted !== desiredMuted) {{
-                micBtn.click();
-                return true;
-            }}
-            return true;
-        }})()
-        """
-        res = await self._evaluate_on_teams_page(js_code)
-        return bool(res)

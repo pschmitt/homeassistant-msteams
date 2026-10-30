@@ -27,7 +27,6 @@ async def async_setup_entry(
     async_add_entities(
         [
             TeamsRefreshTokenButton(coordinator),
-            TeamsToggleMuteButton(coordinator),
         ]
     )
 
@@ -57,24 +56,3 @@ class TeamsRefreshTokenButton(TeamsEntity, ButtonEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.exception("Manual token refresh failed: %s", err)
-
-
-class TeamsToggleMuteButton(TeamsEntity, ButtonEntity):
-    """Button to toggle microphone mute in active meeting."""
-
-    _attr_translation_key = "toggle_mute"
-    _attr_icon = "mdi:microphone-outline"
-
-    def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
-        super().__init__(coordinator, "toggle_mute")
-
-    async def async_press(self) -> None:
-        """Toggle microphone mute via browser-daemon."""
-        try:
-            success = await self.coordinator.client.toggle_meeting_mute()
-            if success:
-                await self.coordinator.async_request_refresh()
-            else:
-                _LOGGER.warning("Could not toggle mute: no active meeting found on browser-daemon")
-        except Exception as err:
-            _LOGGER.exception("Failed to toggle meeting mute: %s", err)

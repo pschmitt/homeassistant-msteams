@@ -8,19 +8,46 @@ import pytest
 
 from custom_components.msteams.config_flow import TeamsConfigFlow, TeamsOptionsFlow
 from custom_components.msteams.const import (
-    CONF_BROWSER_DAEMON_PROFILE,
-    CONF_BROWSER_DAEMON_URL,
+    CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
     CONF_POLL_INTERVAL,
+    CONF_REFRESH_TOKEN,
+    CONF_TENANT_ID,
 )
 
 
 @pytest.mark.asyncio
-async def test_config_flow_browser_daemon_success():
-    """Test successful configuration via browser-daemon."""
+async def test_config_flow_manual_success():
+    """Test successful configuration via manual refresh token."""
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
     flow.context = {}
+    flow._abort_if_unique_id_configured = MagicMock()
+    flow.async_set_unique_id = AsyncMock()
+
+    with patch(
+        "custom_components.msteams.config_flow.TeamsAuth.async_refresh_tokens",
+        new=AsyncMock(return_value=True),
+    ):
+        result = await flow.async_step_user(
+            {
+                CONF_REFRESH_TOKEN: "valid_token_123",
+                CONF_TENANT_ID: "tenant-uuid",
+            }
+        )
+
+    assert result["type"] == "create_entry"
+    assert result["data"]["refresh_token"] == "valid_token_123"
+
+
+@pytest.mark.asyncio
+async def test_config_flow_credentials_file_success():
+    """Test successful configuration via credentials file."""
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.context = {}
+    flow._abort_if_unique_id_configured = MagicMock()
+    flow.async_set_unique_id = AsyncMock()
 
     mock_auth = MagicMock()
     mock_auth.user_mri = "8:orgid:alice"
@@ -36,13 +63,12 @@ async def test_config_flow_browser_daemon_success():
     }
 
     with patch(
-        "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+        "custom_components.msteams.config_flow.TeamsAuth.async_from_credentials",
         new=AsyncMock(return_value=mock_auth),
     ):
-        result = await flow.async_step_browser_daemon(
+        result = await flow.async_step_user(
             {
-                CONF_BROWSER_DAEMON_URL: "https://browser.example.com",
-                CONF_BROWSER_DAEMON_PROFILE: "work",
+                CONF_CREDENTIALS_FILE: "/tmp/fake_creds.json",
             }
         )
 
@@ -59,7 +85,11 @@ async def test_options_flow():
     entry.data = {CONF_POLL_INTERVAL: 30}
     entry.options = {}
 
-    options_flow = TeamsOptionsFlow(entry)
+    options_flow = TeamsOptionsFlow()
+    options_flow.handler = "test_entry"
+    hass = MagicMock()
+    hass.config_entries.async_get_known_entry.return_value = entry
+    options_flow.hass = hass
 
     # Show form
     form = await options_flow.async_step_init()

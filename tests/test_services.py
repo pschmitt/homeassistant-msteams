@@ -12,8 +12,6 @@ from custom_components.msteams.services import (
     SERVICE_ADD_REACTION,
     SERVICE_REPLY_MESSAGE,
     SERVICE_SEND_MESSAGE,
-    SERVICE_SET_MUTE,
-    SERVICE_TOGGLE_MUTE,
     async_setup_services,
     async_unload_services,
 )
@@ -40,8 +38,6 @@ async def test_services_registration_and_calls():
     assert SERVICE_SEND_MESSAGE in registered_services
     assert SERVICE_REPLY_MESSAGE in registered_services
     assert SERVICE_ADD_REACTION in registered_services
-    assert SERVICE_TOGGLE_MUTE in registered_services
-    assert SERVICE_SET_MUTE in registered_services
 
     # Setup mock coordinator in hass.data
     mock_coordinator = MagicMock()
@@ -51,8 +47,6 @@ async def test_services_registration_and_calls():
     mock_coordinator.client = MagicMock()
     mock_coordinator.client.send_message = AsyncMock()
     mock_coordinator.client.add_reaction = AsyncMock()
-    mock_coordinator.client.toggle_meeting_mute = AsyncMock(return_value=True)
-    mock_coordinator.client.set_meeting_mute = AsyncMock(return_value=True)
     mock_coordinator.async_request_refresh = AsyncMock()
 
     hass.data = {DOMAIN: {"entry1": mock_coordinator}}
@@ -68,11 +62,19 @@ async def test_services_registration_and_calls():
         subject=None,
     )
 
-    # Call toggle_mute
-    call_mute = MagicMock()
-    call_mute.data = {}
-    await registered_services[SERVICE_TOGGLE_MUTE](call_mute)
-    mock_coordinator.client.toggle_meeting_mute.assert_awaited_once()
+    # Call add_reaction
+    call_rx = MagicMock()
+    call_rx.data = {
+        "conversation_id": "19:conv123",
+        "message_id": "123456",
+        "reaction": "heart",
+    }
+    await registered_services[SERVICE_ADD_REACTION](call_rx)
+    mock_coordinator.client.add_reaction.assert_awaited_once_with(
+        conversation_id="19:conv123",
+        message_id="123456",
+        reaction="heart",
+    )
 
     # Unload services
     await async_unload_services(hass)

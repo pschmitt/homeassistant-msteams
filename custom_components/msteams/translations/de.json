@@ -3,42 +3,24 @@
     "step": {
       "user": {
         "title": "Microsoft Teams",
-        "description": "Verbinde Microsoft Teams über deine browser-daemon Sitzung.",
+        "description": "Authentifizierung über Anmeldedatei oder OAuth-Refresh-Token.",
         "data": {
-          "browser_daemon_url": "browser-daemon URL",
-          "browser_daemon_profile": "Profilname",
-          "browser_daemon_secret": "Cluster-Geheimnis (optional)",
-          "default_conversation_id": "Standard-Konversations-ID (optional)"
-        }
-      },
-      "browser_daemon": {
-        "title": "Über browser-daemon verbinden",
-        "description": "Lese Microsoft Teams Anmeldedaten aus browser-daemon aus.",
-        "data": {
-          "browser_daemon_url": "browser-daemon URL",
-          "browser_daemon_profile": "Profilname",
-          "browser_daemon_secret": "Cluster-Geheimnis (optional)",
-          "default_conversation_id": "Standard-Konversations-ID (optional)"
-        }
-      },
-      "manual": {
-        "title": "Manuelle Token-Authentifizierung",
-        "description": "Gib einen Microsoft Teams OAuth Refresh-Token an.",
-        "data": {
-          "refresh_token": "Refresh-Token",
-          "tenant_id": "Tenant-ID",
+          "credentials_file": "Pfad zur Anmeldedatei (z.B. /config/teams_credentials.json)",
+          "refresh_token": "OAuth-Refresh-Token",
+          "tenant_id": "Mandanten-ID (Tenant ID)",
           "user_display_name": "Anzeigename",
           "default_conversation_id": "Standard-Konversations-ID (optional)"
         }
       }
     },
     "error": {
+      "missing_credentials": "Bitte geben Sie entweder eine Anmeldedatei oder ein Refresh-Token an.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
-      "cannot_connect": "Verbindung zu browser-daemon oder Microsoft Teams fehlgeschlagen."
+      "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen."
     },
     "abort": {
-      "already_configured": "Dieses Microsoft Teams Konto ist bereits konfiguriert.",
-      "reauth_successful": "Re-Authentifizierung war erfolgreich."
+      "already_configured": "Dieses Microsoft Teams-Konto ist bereits konfiguriert.",
+      "reauth_successful": "Erneute Authentifizierung war erfolgreich."
     }
   },
   "options": {
@@ -47,7 +29,6 @@
         "title": "Microsoft Teams Optionen",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
-          "enable_meeting_controls": "Meeting-Erkennung und -Steuerung über browser-daemon aktivieren",
           "default_conversation_id": "Standard-Konversations-ID für Benachrichtigungen"
         }
       }
@@ -60,17 +41,17 @@
         "step": {
           "reauth": {
             "title": "Teams neu authentifizieren",
-            "description": "Verbinde mit browser-daemon, um die Microsoft Teams Sitzung zu aktualisieren.",
+            "description": "Geben Sie eine neue Anmeldedatei oder ein Refresh-Token an.",
             "data": {
-              "browser_daemon_url": "browser-daemon URL",
-              "browser_daemon_profile": "Profilname",
-              "browser_daemon_secret": "Cluster-Geheimnis (optional)"
+              "credentials_file": "Pfad zur Anmeldedatei",
+              "refresh_token": "OAuth-Refresh-Token",
+              "tenant_id": "Mandanten-ID"
             }
           }
         },
         "error": {
-          "auth_failed": "Authentifizierung oder Sitzungsextraktion fehlgeschlagen.",
-          "cannot_connect": "browser-daemon konnte nicht erreicht werden."
+          "auth_failed": "Fehler beim Authentifizieren oder Auslesen der Token.",
+          "cannot_connect": "Microsoft Teams Endpunkt nicht erreichbar."
         }
       }
     }
@@ -78,7 +59,7 @@
   "entity": {
     "sensor": {
       "presence": {
-        "name": "Präsenz"
+        "name": "Status"
       },
       "next_meeting": {
         "name": "Nächstes Meeting"
@@ -93,9 +74,6 @@
     "binary_sensor": {
       "in_a_meeting": {
         "name": "In einem Meeting"
-      },
-      "meeting_muted": {
-        "name": "Meeting stummgeschaltet"
       },
       "connected": {
         "name": "Verbunden"
@@ -122,33 +100,68 @@
     },
     "button": {
       "refresh_tokens": {
-        "name": "Tokens aktualisieren"
-      },
-      "toggle_mute": {
-        "name": "Stummschaltung umschalten"
+        "name": "Token aktualisieren"
       }
     }
   },
   "services": {
     "send_message": {
       "name": "Nachricht senden",
-      "description": "Sendet eine Nachricht an eine Konversation oder einen Kanal."
+      "description": "Sendet eine Nachricht an eine Microsoft Teams Konversation oder einen Kanal.",
+      "fields": {
+        "message": {
+          "name": "Nachricht",
+          "description": "Inhalt der Nachricht."
+        },
+        "conversation_id": {
+          "name": "Konversations-ID",
+          "description": "ID der Konversation, des Chats oder Kanal-Threads."
+        },
+        "reply_to_message_id": {
+          "name": "Antwort-Nachrichten-ID",
+          "description": "ID der Nachricht, auf die geantwortet wird."
+        },
+        "subject": {
+          "name": "Betreff",
+          "description": "Optionaler Betreff."
+        }
+      }
     },
     "reply_message": {
       "name": "Auf Nachricht antworten",
-      "description": "Antwortet auf eine bestimmte Nachricht."
+      "description": "Antwortet auf eine bestimmte Nachricht.",
+      "fields": {
+        "conversation_id": {
+          "name": "Konversations-ID",
+          "description": "Ziel-Konversations-ID."
+        },
+        "message_id": {
+          "name": "Nachrichten-ID",
+          "description": "ID der Nachricht, auf die geantwortet wird."
+        },
+        "message": {
+          "name": "Nachricht",
+          "description": "Inhalt der Antwort."
+        }
+      }
     },
     "add_reaction": {
       "name": "Reaktion hinzufügen",
-      "description": "Fügt eine Emoji-Reaktion zu einer Nachricht hinzu."
-    },
-    "toggle_mute": {
-      "name": "Mikrofon-Stummschaltung umschalten",
-      "description": "Schaltet das Mikrofon im aktiven Teams-Meeting um."
-    },
-    "set_mute": {
-      "name": "Mikrofon-Stummschaltung setzen",
-      "description": "Setzt den Status der Stummschaltung im aktiven Teams-Meeting."
+      "description": "Fügt eine Emoji-Reaktion zu einer Nachricht hinzu.",
+      "fields": {
+        "conversation_id": {
+          "name": "Konversations-ID",
+          "description": "Konversation der Nachricht."
+        },
+        "message_id": {
+          "name": "Nachrichten-ID",
+          "description": "ID der Zielnachricht."
+        },
+        "reaction": {
+          "name": "Reaktion",
+          "description": "Die Emoji-Reaktion."
+        }
+      }
     }
   }
 }

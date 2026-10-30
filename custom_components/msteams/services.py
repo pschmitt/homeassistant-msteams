@@ -16,8 +16,6 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_SEND_MESSAGE = "send_message"
 SERVICE_REPLY_MESSAGE = "reply_message"
 SERVICE_ADD_REACTION = "add_reaction"
-SERVICE_TOGGLE_MUTE = "toggle_mute"
-SERVICE_SET_MUTE = "set_mute"
 
 SEND_MESSAGE_SCHEMA = vol.Schema(
     {
@@ -43,19 +41,6 @@ ADD_REACTION_SCHEMA = vol.Schema(
         vol.Required("conversation_id"): cv.string,
         vol.Required("message_id"): cv.string,
         vol.Optional("reaction", default="like"): cv.string,
-        vol.Optional("entry_id"): cv.string,
-    }
-)
-
-TOGGLE_MUTE_SCHEMA = vol.Schema(
-    {
-        vol.Optional("entry_id"): cv.string,
-    }
-)
-
-SET_MUTE_SCHEMA = vol.Schema(
-    {
-        vol.Required("mute"): cv.boolean,
         vol.Optional("entry_id"): cv.string,
     }
 )
@@ -122,36 +107,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             reaction=call.data["reaction"],
         )
 
-    async def handle_toggle_mute(call: ServiceCall) -> None:
-        coordinator = _get_coordinator(hass, call.data.get("entry_id"))
-        if not coordinator:
-            _LOGGER.error("No Microsoft Teams integration entries found to toggle mute")
-            return
-
-        success = await coordinator.client.toggle_meeting_mute()
-        if success:
-            await coordinator.async_request_refresh()
-        else:
-            _LOGGER.warning("Could not toggle mute: active meeting not detected in browser-daemon")
-
-    async def handle_set_mute(call: ServiceCall) -> None:
-        coordinator = _get_coordinator(hass, call.data.get("entry_id"))
-        if not coordinator:
-            _LOGGER.error("No Microsoft Teams integration entries found to set mute")
-            return
-
-        success = await coordinator.client.set_meeting_mute(call.data["mute"])
-        if success:
-            await coordinator.async_request_refresh()
-        else:
-            _LOGGER.warning("Could not set mute: active meeting not detected in browser-daemon")
-
     services = [
         (SERVICE_SEND_MESSAGE, handle_send_message, SEND_MESSAGE_SCHEMA),
         (SERVICE_REPLY_MESSAGE, handle_reply_message, REPLY_MESSAGE_SCHEMA),
         (SERVICE_ADD_REACTION, handle_add_reaction, ADD_REACTION_SCHEMA),
-        (SERVICE_TOGGLE_MUTE, handle_toggle_mute, TOGGLE_MUTE_SCHEMA),
-        (SERVICE_SET_MUTE, handle_set_mute, SET_MUTE_SCHEMA),
     ]
 
     for service_name, handler, schema in services:
@@ -164,8 +123,6 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_SEND_MESSAGE,
         SERVICE_REPLY_MESSAGE,
         SERVICE_ADD_REACTION,
-        SERVICE_TOGGLE_MUTE,
-        SERVICE_SET_MUTE,
     ]
     for service_name in services:
         hass.services.async_remove(DOMAIN, service_name)
