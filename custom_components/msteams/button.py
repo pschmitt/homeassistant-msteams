@@ -35,7 +35,7 @@ class TeamsRefreshTokenButton(TeamsEntity, ButtonEntity):
     """Button to manually force token refresh."""
 
     _attr_translation_key = "refresh_tokens"
-    _attr_icon = "mdi:key-sync"
+    _attr_icon = "mdi:key-change"
 
     def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
         super().__init__(coordinator, "refresh_tokens")

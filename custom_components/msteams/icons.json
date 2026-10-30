@@ -18,9 +18,6 @@
       "in_a_meeting": {
         "default": "mdi:phone-in-talk"
       },
-      "meeting_muted": {
-        "default": "mdi:microphone-off"
-      },
       "connected": {
         "default": "mdi:microsoft-teams"
       }
@@ -37,10 +34,7 @@
     },
     "button": {
       "refresh_tokens": {
-        "default": "mdi:key-sync"
-      },
-      "toggle_mute": {
-        "default": "mdi:microphone-outline"
+        "default": "mdi:key-change"
       }
     }
   }
