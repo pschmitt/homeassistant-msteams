@@ -86,7 +86,11 @@ class TeamsNextMeetingSensor(TeamsEntity, SensorEntity):
             "end_time": next_m.get("end_time"),
             "organizer": next_m.get("organizer_name"),
             "organizer_email": next_m.get("organizer_email"),
+            "is_organizer": next_m.get("is_organizer", False),
             "location": next_m.get("location"),
+            "description": next_m.get("description", ""),
+            "participants": next_m.get("participants", []),
+            "participants_count": next_m.get("participants_count", 0),
             "is_online": next_m.get("is_online"),
             "join_url": next_m.get("join_url"),
             "my_response": next_m.get("my_response"),
@@ -116,6 +120,7 @@ class TeamsActiveMeetingSensor(TeamsEntity, SensorEntity):
         data = self.coordinator.data or {}
         title = data.get("meeting_title")
         url = data.get("meeting_url")
+        act_m = data.get("active_meeting") or {}
         return {
             "in_meeting": data.get("in_a_meeting", False),
             "meeting_title": title,
@@ -124,7 +129,16 @@ class TeamsActiveMeetingSensor(TeamsEntity, SensorEntity):
             "meeting_url": url,
             "url": url,
             "join_url": url,
-            "active_calendar_meeting": (data.get("active_meeting") or {}).get("subject"),
+            "active_calendar_meeting": act_m.get("subject"),
+            "description": act_m.get("description", ""),
+            "participants": act_m.get("participants", []),
+            "participants_count": act_m.get("participants_count", 0),
+            "organizer": act_m.get("organizer_name"),
+            "organizer_email": act_m.get("organizer_email"),
+            "is_organizer": act_m.get("is_organizer", False),
+            "location": act_m.get("location"),
+            "start_time": act_m.get("start_time"),
+            "end_time": act_m.get("end_time"),
         }
 
 

@@ -54,6 +54,7 @@ class TeamsInMeetingBinarySensor(TeamsEntity, BinarySensorEntity):
         data = self.coordinator.data or {}
         title = data.get("meeting_title")
         url = data.get("meeting_url")
+        act_m = data.get("active_meeting") or {}
         return {
             "title": title,
             "meeting_title": title,
@@ -61,6 +62,10 @@ class TeamsInMeetingBinarySensor(TeamsEntity, BinarySensorEntity):
             "url": url,
             "meeting_url": url,
             "join_url": url,
+            "description": act_m.get("description", ""),
+            "participants": act_m.get("participants", []),
+            "participants_count": act_m.get("participants_count", 0),
+            "organizer": act_m.get("organizer_name"),
         }
 
 

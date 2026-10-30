@@ -329,6 +329,7 @@ class TeamsApiClient:
         self.auth = auth
         self.region = region
         self.base_url = base_url.rstrip("/")
+        self._profile_cache: dict[str, dict[str, Any]] = {}
 
     async def _ensure_auth(self) -> None:
         """Ensure auth is valid before making an API call."""
@@ -408,6 +409,24 @@ class TeamsApiClient:
         raw_meetings = payload.get("value") or payload.get("data", {}).get("value", [])
         meetings: list[dict[str, Any]] = []
         for raw in raw_meetings:
+            thread_id = raw.get("threadId")
+            if not thread_id:
+                skype_data = raw.get("skypeTeamsDataObject")
+                if isinstance(skype_data, dict):
+                    thread_id = skype_data.get("cid")
+                elif isinstance(raw.get("skypeTeamsData"), str):
+                    try:
+                        parsed = json.loads(raw["skypeTeamsData"])
+                        thread_id = parsed.get("cid")
+                    except Exception:
+                        pass
+
+            body_preview = raw.get("bodyPreview") or ""
+            desc = ""
+            if body_preview:
+                parts = re.split(r"_{10,}", body_preview)
+                desc = parts[0].strip()
+
             meetings.append(
                 {
                     "id": raw.get("objectId") or raw.get("id"),
@@ -418,12 +437,73 @@ class TeamsApiClient:
                     "organizer_email": raw.get("organizerAddress") or "",
                     "location": raw.get("location") or "",
                     "is_online": raw.get("isOnlineMeeting") is True,
+                    "is_organizer": raw.get("isOrganizer") is True,
                     "join_url": raw.get("skypeTeamsMeetingUrl"),
-                    "thread_id": raw.get("threadId"),
+                    "thread_id": thread_id,
                     "my_response": raw.get("myResponseType", "None"),
+                    "description": desc,
                 }
             )
         return meetings
+
+    async def get_thread_participants(self, thread_id: str) -> list[str]:
+        """Fetch and resolve participant names for a meeting or chat thread."""
+        if not thread_id:
+            return []
+        await self._ensure_auth()
+        url = f"{self.base_url}/api/chatsvc/{self.region}/v1/threads/{quote(thread_id, safe='')}"
+        try:
+            async with self.auth.session.get(
+                url, headers=self._headers("messaging"), timeout=15
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                thread_info = await resp.json()
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch thread info for %s: %s", thread_id, err)
+            return []
+
+        members = thread_info.get("members", [])
+        mris: list[str] = []
+        for m in members:
+            mid = m.get("id", "")
+            if mid.startswith("8:orgid:") and mid not in self._profile_cache:
+                mris.append(mid)
+
+        if mris:
+            await self._resolve_profiles(mris)
+
+        names: list[str] = []
+        for m in members:
+            mid = m.get("id", "")
+            if mid.startswith("8:orgid:"):
+                prof = self._profile_cache.get(mid, {})
+                display_name = prof.get("displayName")
+                if display_name:
+                    names.append(display_name)
+            elif not mid.startswith("28:"):
+                name = m.get("friendlyName") or m.get("displayName")
+                if name:
+                    names.append(name)
+        return names
+
+    async def _resolve_profiles(self, mris: list[str]) -> None:
+        """Resolve user MRIs via MiddleTier fetchShortProfile."""
+        url = f"{self.base_url}/api/mt/{self.region}/beta/users/fetchShortProfile?isMailAddress=false&enableGuest=true&skypeTeamsInfo=true"
+        headers = self._headers("middletier")
+        headers["Content-Type"] = "application/json"
+        try:
+            async with self.auth.session.post(
+                url, headers=headers, json=mris[:50], timeout=15
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    for p in data.get("value", []):
+                        mri = p.get("mri")
+                        if mri:
+                            self._profile_cache[mri] = p
+        except Exception as err:
+            _LOGGER.debug("Profile resolution failed: %s", err)
 
     async def get_active_call_and_unread(self) -> tuple[dict[str, Any] | None, int]:
         """Fetch conversations to detect active call/meeting state and count unread chats."""

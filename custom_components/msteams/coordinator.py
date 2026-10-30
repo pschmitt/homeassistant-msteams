@@ -257,6 +257,25 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 },
             )
 
+        # Resolve participants for next meeting and active meeting
+        if next_meeting and next_meeting.get("thread_id"):
+            try:
+                next_meeting["participants"] = await self.client.get_thread_participants(
+                    next_meeting["thread_id"]
+                )
+                next_meeting["participants_count"] = len(next_meeting["participants"])
+            except Exception as err:
+                _LOGGER.debug("Failed to resolve participants for next meeting: %s", err)
+
+        if active_meeting and active_meeting.get("thread_id"):
+            try:
+                active_meeting["participants"] = await self.client.get_thread_participants(
+                    active_meeting["thread_id"]
+                )
+                active_meeting["participants_count"] = len(active_meeting["participants"])
+            except Exception as err:
+                _LOGGER.debug("Failed to resolve participants for active meeting: %s", err)
+
         return {
             "presence": presence,
             "meetings": meetings,

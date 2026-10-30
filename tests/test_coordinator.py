@@ -59,6 +59,7 @@ async def test_coordinator_update_data_and_events():
     client.get_calendar_meetings = AsyncMock(return_value=[meeting_now, meeting_later])
     client.get_unread_chats_count = AsyncMock(return_value=3)
     client.get_active_call_and_unread = AsyncMock(return_value=(None, 3))
+    client.get_thread_participants = AsyncMock(return_value=["Alice", "Bob"])
 
     coordinator = TeamsDataUpdateCoordinator(hass, entry, client)
 
