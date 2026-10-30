@@ -1,0 +1,207 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Microsoft Teams",
+        "description": "Connect to Microsoft Teams using your browser-daemon session.",
+        "data": {
+          "browser_daemon_url": "browser-daemon URL",
+          "browser_daemon_profile": "Profile name",
+          "browser_daemon_secret": "Cluster secret (optional)",
+          "default_conversation_id": "Default Conversation ID (optional)"
+        }
+      },
+      "browser_daemon": {
+        "title": "Connect via browser-daemon",
+        "description": "Extract active Microsoft Teams session credentials from browser-daemon.",
+        "data": {
+          "browser_daemon_url": "browser-daemon URL",
+          "browser_daemon_profile": "Profile name",
+          "browser_daemon_secret": "Cluster secret (optional)",
+          "default_conversation_id": "Default Conversation ID (optional)"
+        }
+      },
+      "manual": {
+        "title": "Manual Token Authentication",
+        "description": "Provide a Microsoft Teams OAuth refresh token.",
+        "data": {
+          "refresh_token": "Refresh token",
+          "tenant_id": "Tenant ID",
+          "user_display_name": "User display name",
+          "default_conversation_id": "Default Conversation ID (optional)"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "Authentication failed or token invalid.",
+      "cannot_connect": "Could not connect to browser-daemon or Teams endpoint."
+    },
+    "abort": {
+      "already_configured": "This Microsoft Teams account is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Microsoft Teams Options",
+        "data": {
+          "poll_interval": "Update interval (seconds)",
+          "enable_meeting_controls": "Enable meeting detection and controls via browser-daemon",
+          "default_conversation_id": "Default Conversation ID for notifications"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_expired": {
+      "title": "Teams authentication expired",
+      "description": "Authentication for {name} has expired or needs reauthorization via browser-daemon.",
+      "fix_flow": {
+        "step": {
+          "reauth": {
+            "title": "Re-authenticate Teams",
+            "description": "Connect to browser-daemon to refresh the Microsoft Teams session.",
+            "data": {
+              "browser_daemon_url": "browser-daemon URL",
+              "browser_daemon_profile": "Profile name",
+              "browser_daemon_secret": "Cluster secret (optional)"
+            }
+          }
+        },
+        "error": {
+          "auth_failed": "Failed to authenticate or extract session tokens.",
+          "cannot_connect": "Could not reach browser-daemon."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "presence": {
+        "name": "Presence"
+      },
+      "next_meeting": {
+        "name": "Next meeting"
+      },
+      "active_meeting": {
+        "name": "Active meeting"
+      },
+      "unread_chats": {
+        "name": "Unread chats"
+      }
+    },
+    "binary_sensor": {
+      "in_a_meeting": {
+        "name": "In a meeting"
+      },
+      "meeting_muted": {
+        "name": "Meeting muted"
+      },
+      "connected": {
+        "name": "Connected"
+      }
+    },
+    "event": {
+      "meeting_event": {
+        "name": "Meeting event",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "meeting_started": "Meeting started",
+              "meeting_ended": "Meeting ended",
+              "meeting_reminder": "Meeting reminder"
+            }
+          }
+        }
+      }
+    },
+    "notify": {
+      "notify": {
+        "name": "Microsoft Teams"
+      }
+    },
+    "button": {
+      "refresh_tokens": {
+        "name": "Refresh tokens"
+      },
+      "toggle_mute": {
+        "name": "Toggle meeting mute"
+      }
+    }
+  },
+  "services": {
+    "send_message": {
+      "name": "Send message",
+      "description": "Send a message to a Microsoft Teams conversation or channel.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "The message content to send."
+        },
+        "conversation_id": {
+          "name": "Conversation ID",
+          "description": "The ID of the conversation, 1:1 chat, or channel thread."
+        },
+        "reply_to_message_id": {
+          "name": "Reply to message ID",
+          "description": "ID of an existing message to reply to."
+        },
+        "subject": {
+          "name": "Subject",
+          "description": "Optional message subject header."
+        }
+      }
+    },
+    "reply_message": {
+      "name": "Reply to message",
+      "description": "Reply to a specific Microsoft Teams message.",
+      "fields": {
+        "conversation_id": {
+          "name": "Conversation ID",
+          "description": "Target conversation ID."
+        },
+        "message_id": {
+          "name": "Message ID",
+          "description": "The message ID to reply to."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Content of the reply."
+        }
+      }
+    },
+    "add_reaction": {
+      "name": "Add reaction",
+      "description": "Add an emoji reaction to a message.",
+      "fields": {
+        "conversation_id": {
+          "name": "Conversation ID",
+          "description": "Conversation containing the message."
+        },
+        "message_id": {
+          "name": "Message ID",
+          "description": "Target message ID."
+        },
+        "reaction": {
+          "name": "Reaction",
+          "description": "The reaction to add."
+        }
+      }
+    },
+    "toggle_mute": {
+      "name": "Toggle meeting mute",
+      "description": "Toggle your microphone mute in the active Microsoft Teams meeting via browser-daemon."
+    },
+    "set_mute": {
+      "name": "Set meeting mute",
+      "description": "Set your microphone mute state in the active Microsoft Teams meeting via browser-daemon.",
+      "fields": {
+        "mute": {
+          "name": "Mute",
+          "description": "Set True to mute, False to unmute."
+        }
+      }
+    }
+  }
+}

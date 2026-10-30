@@ -1,0 +1,16 @@
+{
+  "domain": "msteams",
+  "name": "Microsoft Teams",
+  "codeowners": [
+    "@pschmitt"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/pschmitt/homeassistant-msteams",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/pschmitt/homeassistant-msteams/issues",
+  "loggers": [
+    "custom_components.msteams"
+  ],
+  "version": "0.1.0"
+}

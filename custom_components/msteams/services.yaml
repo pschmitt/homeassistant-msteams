@@ -1,0 +1,101 @@
+send_message:
+  name: Send message
+  description: Send a message to a Microsoft Teams conversation or channel.
+  fields:
+    message:
+      name: Message
+      description: The message content to send. Markdown formatting is supported.
+      required: true
+      example: "Hello team, deployment finished successfully!"
+      selector:
+        text:
+          multiline: true
+    conversation_id:
+      name: Conversation ID
+      description: The ID of the conversation, 1:1 chat, or channel thread. If omitted, uses default conversation.
+      required: false
+      example: "19:abc...@thread.tacv2"
+      selector:
+        text:
+    reply_to_message_id:
+      name: Reply to message ID
+      description: ID of an existing message to reply to.
+      required: false
+      selector:
+        text:
+    subject:
+      name: Subject
+      description: Optional message subject header.
+      required: false
+      selector:
+        text:
+
+reply_message:
+  name: Reply to message
+  description: Reply to a specific Microsoft Teams message.
+  fields:
+    conversation_id:
+      name: Conversation ID
+      description: Target conversation ID.
+      required: true
+      selector:
+        text:
+    message_id:
+      name: Message ID
+      description: The message ID to quote or reply to.
+      required: true
+      selector:
+        text:
+    message:
+      name: Message
+      description: Content of the reply.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+add_reaction:
+  name: Add reaction
+  description: Add an emoji reaction to a message.
+  fields:
+    conversation_id:
+      name: Conversation ID
+      description: Conversation containing the message.
+      required: true
+      selector:
+        text:
+    message_id:
+      name: Message ID
+      description: Target message ID.
+      required: true
+      selector:
+        text:
+    reaction:
+      name: Reaction
+      description: The reaction to add.
+      required: true
+      default: like
+      selector:
+        select:
+          options:
+            - like
+            - heart
+            - laugh
+            - surprised
+            - sad
+            - angry
+
+toggle_mute:
+  name: Toggle meeting mute
+  description: Toggle your microphone mute in the active Microsoft Teams meeting via browser-daemon.
+
+set_mute:
+  name: Set meeting mute
+  description: Set your microphone mute state in the active Microsoft Teams meeting via browser-daemon.
+  fields:
+    mute:
+      name: Mute
+      description: Set True to mute, False to unmute.
+      required: true
+      selector:
+        boolean:

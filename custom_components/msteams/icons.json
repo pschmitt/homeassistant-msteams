@@ -1,0 +1,47 @@
+{
+  "entity": {
+    "sensor": {
+      "presence": {
+        "default": "mdi:account-clock"
+      },
+      "next_meeting": {
+        "default": "mdi:calendar-clock"
+      },
+      "active_meeting": {
+        "default": "mdi:video-account"
+      },
+      "unread_chats": {
+        "default": "mdi:message-badge"
+      }
+    },
+    "binary_sensor": {
+      "in_a_meeting": {
+        "default": "mdi:phone-in-talk"
+      },
+      "meeting_muted": {
+        "default": "mdi:microphone-off"
+      },
+      "connected": {
+        "default": "mdi:microsoft-teams"
+      }
+    },
+    "event": {
+      "meeting_event": {
+        "default": "mdi:calendar-star"
+      }
+    },
+    "notify": {
+      "notify": {
+        "default": "mdi:microsoft-teams"
+      }
+    },
+    "button": {
+      "refresh_tokens": {
+        "default": "mdi:key-sync"
+      },
+      "toggle_mute": {
+        "default": "mdi:microphone-outline"
+      }
+    }
+  }
+}

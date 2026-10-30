@@ -1,0 +1,218 @@
+"""DataUpdateCoordinator for Microsoft Teams integration."""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .api import TeamsApiClient, TeamsAuthError
+from .const import (
+    CONF_ENABLE_MEETING_CONTROLS,
+    CONF_POLL_INTERVAL,
+    DEFAULT_POLL_INTERVAL,
+    DOMAIN,
+    EVENT_MEETING_ENDED,
+    EVENT_MEETING_REMINDER,
+    EVENT_MEETING_STARTED,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _parse_iso(iso_str: str | None) -> datetime | None:
+    """Safely parse ISO datetime string."""
+    if not iso_str:
+        return None
+    try:
+        # Replace trailing Z with UTC timezone
+        cleaned = iso_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except Exception:
+        return None
+
+
+class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Coordinator to manage fetching Teams data from APIs and browser-daemon."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        client: TeamsApiClient,
+    ) -> None:
+        self.entry = entry
+        self.client = client
+        poll_interval = entry.options.get(
+            CONF_POLL_INTERVAL,
+            entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+        )
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"Microsoft Teams ({entry.title})",
+            update_interval=timedelta(seconds=poll_interval),
+        )
+        self.enable_meeting_controls = entry.options.get(
+            CONF_ENABLE_MEETING_CONTROLS,
+            entry.data.get(CONF_ENABLE_MEETING_CONTROLS, True),
+        )
+        self._previous_meeting_id: str | None = None
+        self._sent_reminders: set[str] = set()
+        self._event_listeners: list[Any] = []
+
+    def register_event_listener(self, listener: Any) -> callback:
+        """Register a callback for meeting lifecycle events."""
+        self._event_listeners.append(listener)
+
+        @callback
+        def _remove() -> None:
+            if listener in self._event_listeners:
+                self._event_listeners.remove(listener)
+
+        return _remove
+
+    def _fire_meeting_event(self, event_type: str, event_data: dict[str, Any]) -> None:
+        """Dispatch meeting lifecycle event to registered listeners."""
+        for listener in list(self._event_listeners):
+            try:
+                listener(event_type, event_data)
+            except Exception as err:
+                _LOGGER.exception("Error dispatching meeting event: %s", err)
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Fetch latest data from Teams API and browser-daemon."""
+        try:
+            # 1. Fetch Presence
+            presence = await self.client.get_presence()
+
+            # 2. Fetch Upcoming Calendar Meetings
+            now = datetime.now(UTC)
+            meetings = await self.client.get_calendar_meetings(
+                start_date=now - timedelta(minutes=30),
+                end_date=now + timedelta(days=2),
+                limit=15,
+            )
+
+            # 3. Fetch Unread Chats Count
+            unread_count = await self.client.get_unread_chats_count()
+
+            # 4. Fetch Live Browser-Daemon Meeting Status (if enabled)
+            live_status = {
+                "in_meeting": False,
+                "is_muted": False,
+                "title": "",
+                "url": "",
+            }
+            if self.enable_meeting_controls and self.client.browser_daemon_url:
+                live_status = await self.client.get_live_meeting_status()
+
+            # Clear any previously registered auth issues
+            ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
+
+        except TeamsAuthError as err:
+            _LOGGER.error("Teams authentication failed: %s", err)
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                f"auth_failed_{self.entry.entry_id}",
+                is_fixable=True,
+                is_persistent=True,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="auth_expired",
+                translation_placeholders={"name": self.entry.title},
+                data={"entry_id": self.entry.entry_id},
+            )
+            raise ConfigEntryAuthFailed(err) from err
+        except Exception as err:
+            raise UpdateFailed(f"Error communicating with Teams API: {err}") from err
+
+        # Determine next meeting and active meeting from calendar
+        next_meeting: dict[str, Any] | None = None
+        active_meeting: dict[str, Any] | None = None
+
+        for m in sorted(meetings, key=lambda x: x.get("start_time") or ""):
+            start_dt = _parse_iso(m.get("start_time"))
+            end_dt = _parse_iso(m.get("end_time"))
+            if not start_dt or not end_dt:
+                continue
+
+            if start_dt <= now <= end_dt:
+                active_meeting = m
+            elif start_dt > now and (next_meeting is None):
+                next_meeting = m
+
+            # Check 5-minute reminder
+            meeting_id = m.get("id")
+            if meeting_id and start_dt > now and (start_dt - now) <= timedelta(minutes=6):
+                reminder_key = f"{meeting_id}_reminder"
+                if reminder_key not in self._sent_reminders:
+                    self._sent_reminders.add(reminder_key)
+                    self._fire_meeting_event(
+                        EVENT_MEETING_REMINDER,
+                        {
+                            "meeting_id": meeting_id,
+                            "subject": m.get("subject"),
+                            "start_time": m.get("start_time"),
+                            "join_url": m.get("join_url"),
+                        },
+                    )
+
+        # Merge live browser-daemon meeting status with calendar status
+        in_a_meeting = live_status["in_meeting"] or (active_meeting is not None)
+        active_title = live_status["title"] or (
+            active_meeting.get("subject") if active_meeting else ""
+        )
+        active_url = live_status["url"] or (
+            active_meeting.get("join_url") if active_meeting else ""
+        )
+
+        current_meeting_id = (active_meeting.get("id") if active_meeting else None) or (
+            active_title if in_a_meeting else None
+        )
+
+        # Trigger meeting lifecycle events
+        if in_a_meeting and self._previous_meeting_id != current_meeting_id:
+            self._previous_meeting_id = current_meeting_id
+            self._fire_meeting_event(
+                EVENT_MEETING_STARTED,
+                {
+                    "meeting_id": current_meeting_id,
+                    "subject": active_title,
+                    "url": active_url,
+                },
+            )
+        elif not in_a_meeting and self._previous_meeting_id is not None:
+            prev_id = self._previous_meeting_id
+            self._previous_meeting_id = None
+            self._fire_meeting_event(
+                EVENT_MEETING_ENDED,
+                {
+                    "meeting_id": prev_id,
+                },
+            )
+
+        return {
+            "presence": presence,
+            "meetings": meetings,
+            "next_meeting": next_meeting,
+            "active_meeting": active_meeting,
+            "in_a_meeting": in_a_meeting,
+            "meeting_title": active_title,
+            "meeting_url": active_url,
+            "meeting_muted": live_status.get("is_muted", False),
+            "unread_chats": unread_count,
+            "live_status": live_status,
+            "user_mri": self.client.auth.user_mri,
+            "user_display_name": self.client.auth.user_display_name,
+            "user_email": self.client.auth.user_email,
+        }
