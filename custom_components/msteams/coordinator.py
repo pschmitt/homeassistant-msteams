@@ -99,8 +99,8 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 limit=15,
             )
 
-            # 3. Fetch Unread Chats Count
-            unread_count = await self.client.get_unread_chats_count()
+            # 3. Fetch Active Call and Unread Chats Count
+            active_call, unread_count = await self.client.get_active_call_and_unread()
 
             # Clear any previously registered auth issues
             ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
@@ -122,9 +122,9 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             raise UpdateFailed(f"Error communicating with Teams API: {err}") from err
 
-        # Determine next meeting and active meeting from calendar
+        # Determine next meeting and calendar active meeting
         next_meeting: dict[str, Any] | None = None
-        active_meeting: dict[str, Any] | None = None
+        cal_active_meeting: dict[str, Any] | None = None
 
         for m in sorted(meetings, key=lambda x: x.get("start_time") or ""):
             start_dt = _parse_iso(m.get("start_time"))
@@ -133,7 +133,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
 
             if start_dt <= now <= end_dt:
-                active_meeting = m
+                cal_active_meeting = m
             elif start_dt > now and (next_meeting is None):
                 next_meeting = m
 
@@ -153,20 +153,84 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         },
                     )
 
-        # Merge presence and calendar status
+        # Merge live call awareness, presence, and calendar status
         is_in_meeting_by_presence = presence.get("activity") in (
             "InAMeeting",
             "InACall",
             "InAConferenceCall",
         ) or presence.get("availability") in ("InAMeeting", "InACall")
 
-        in_a_meeting = (active_meeting is not None) or is_in_meeting_by_presence
+        active_meeting: dict[str, Any] | None = None
+
+        if active_call:
+            # Look for matching meeting on the calendar by thread_id, join_url, or subject
+            matched_cal = None
+            for m in meetings:
+                if (
+                    (m.get("thread_id") and m.get("thread_id") == active_call.get("thread_id"))
+                    or (
+                        m.get("join_url")
+                        and active_call.get("url")
+                        and m.get("join_url") == active_call.get("url")
+                    )
+                    or (
+                        m.get("subject")
+                        and active_call.get("title")
+                        and m.get("subject").strip().lower()
+                        == active_call.get("title").strip().lower()
+                    )
+                ):
+                    matched_cal = m
+                    break
+
+            if matched_cal:
+                active_meeting = dict(matched_cal)
+                if not active_meeting.get("join_url") and active_call.get("url"):
+                    active_meeting["join_url"] = active_call["url"]
+            else:
+                active_meeting = {
+                    "id": active_call.get("thread_id"),
+                    "subject": active_call.get("title"),
+                    "join_url": active_call.get("url"),
+                    "start_time": active_call.get("call_start_time"),
+                    "meeting_code": active_call.get("meeting_code"),
+                    "passcode": active_call.get("passcode"),
+                    "is_online": True,
+                }
+        elif cal_active_meeting:
+            active_meeting = cal_active_meeting
+        elif is_in_meeting_by_presence:
+            # If presence says InAMeeting or InACall, check if a calendar meeting is nearby
+            # (started within 15 min early or ended within 60 min late)
+            for m in meetings:
+                s_dt = _parse_iso(m.get("start_time"))
+                e_dt = _parse_iso(m.get("end_time"))
+                if (
+                    s_dt
+                    and e_dt
+                    and (s_dt - timedelta(minutes=15)) <= now <= (e_dt + timedelta(minutes=60))
+                ):
+                    active_meeting = m
+                    break
+
+        in_a_meeting = (
+            (active_call is not None) or (active_meeting is not None) or is_in_meeting_by_presence
+        )
+
         active_title = (
             active_meeting.get("subject")
             if active_meeting
-            else ("In a Call" if is_in_meeting_by_presence else "")
+            else (
+                active_call.get("title")
+                if active_call
+                else ("In a Call" if is_in_meeting_by_presence else "")
+            )
         )
-        active_url = active_meeting.get("join_url") if active_meeting else ""
+        active_url = (
+            active_meeting.get("join_url")
+            if active_meeting
+            else (active_call.get("url") if active_call else "")
+        )
 
         current_meeting_id = (active_meeting.get("id") if active_meeting else None) or (
             active_title if in_a_meeting else None

@@ -425,10 +425,12 @@ class TeamsApiClient:
             )
         return meetings
 
-    async def get_unread_chats_count(self) -> int:
-        """Get count of chats with unread messages."""
+    async def get_active_call_and_unread(self) -> tuple[dict[str, Any] | None, int]:
+        """Fetch conversations to detect active call/meeting state and count unread chats."""
         await self._ensure_auth()
         url = f"{self.base_url}/api/chatsvc/{self.region}/v1/users/ME/conversations?filter=isPinned+eq+true+or+isPinned+eq+false&$top=30"
+        active_call: dict[str, Any] | None = None
+        unread_count = 0
         try:
             async with self.auth.session.get(
                 url, headers=self._headers("messaging"), timeout=15
@@ -436,8 +438,48 @@ class TeamsApiClient:
                 if resp.status == 200:
                     data = await resp.json()
                     convs = data.get("conversations", [])
-                    unread_count = 0
                     for c in convs:
+                        # 1. Check for active call awareness in threadProperties
+                        tprops = c.get("threadProperties", {})
+                        if not active_call:
+                            for k, v in tprops.items():
+                                if k.startswith("awareness_conversationLiveState") and isinstance(
+                                    v, str
+                                ):
+                                    try:
+                                        live_state = json.loads(v)
+                                        if live_state.get("status") == "Active":
+                                            thread_id = c.get("id") or ""
+                                            topic = (
+                                                tprops.get("topic")
+                                                or c.get("properties", {}).get("displayName")
+                                                or "Call"
+                                            )
+                                            meeting_info = live_state.get("meetingInfo", {})
+                                            org_id = meeting_info.get("organizerId")
+                                            tenant_id = (
+                                                meeting_info.get("tenantId") or self.auth.tenant_id
+                                            )
+                                            join_url = ""
+                                            if thread_id and org_id and tenant_id:
+                                                quoted_thread = quote(thread_id, safe="")
+                                                join_url = f"https://teams.microsoft.com/l/meetup-join/{quoted_thread}/0?context=%7b%22Tid%22%3a%22{tenant_id}%22%2c%22Oid%22%3a%22{org_id}%22%7d"
+
+                                            meeting_data = live_state.get("meetingData", {})
+                                            active_call = {
+                                                "title": topic,
+                                                "url": join_url,
+                                                "thread_id": thread_id,
+                                                "call_start_time": live_state.get("callStartTime"),
+                                                "meeting_code": meeting_data.get("meetingCode"),
+                                                "passcode": meeting_data.get("passcode"),
+                                                "i_cal_uid": live_state.get("iCalUid"),
+                                            }
+                                            break
+                                    except Exception:
+                                        pass
+
+                        # 2. Check unread count
                         last_msg = c.get("lastMessage", {})
                         last_sync = c.get("properties", {}).get("consumptionhorizon", "")
                         last_msg_id = str(last_msg.get("id", ""))
@@ -447,10 +489,15 @@ class TeamsApiClient:
                             and last_msg.get("from") != self.auth.user_mri
                         ):
                             unread_count += 1
-                    return unread_count
         except Exception as err:
-            _LOGGER.debug("Failed to calculate unread chats count: %s", err)
-        return 0
+            _LOGGER.debug("Failed to fetch conversations: %s", err)
+
+        return active_call, unread_count
+
+    async def get_unread_chats_count(self) -> int:
+        """Get count of chats with unread messages."""
+        _, unread_count = await self.get_active_call_and_unread()
+        return unread_count
 
     async def send_message(
         self,
