@@ -185,6 +185,8 @@ if "homeassistant" not in sys.modules:
     config_validation = types.ModuleType("homeassistant.helpers.config_validation")
     config_validation.string = str
     config_validation.boolean = bool
+    config_validation.empty_config_schema = lambda domain: lambda x: x
+    config_validation.config_entry_only_config_schema = lambda domain: lambda x: x
     sys.modules["homeassistant.helpers.config_validation"] = config_validation
     helpers.config_validation = config_validation
 

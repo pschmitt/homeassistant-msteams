@@ -56,7 +56,6 @@
   "issues": {
     "auth_expired": {
       "title": "Teams authentication expired",
-      "description": "Authentication for {name} has expired or needs reauthorization via browser-daemon.",
       "fix_flow": {
         "step": {
           "reauth": {

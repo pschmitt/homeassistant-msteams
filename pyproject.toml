@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Microsoft Teams custom component for Home Assistant"
 readme = "README.md"
 requires-python = ">=3.13"
-license = "MIT"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "voluptuous>=0.13.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

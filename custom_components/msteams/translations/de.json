@@ -56,7 +56,6 @@
   "issues": {
     "auth_expired": {
       "title": "Teams-Authentifizierung abgelaufen",
-      "description": "Die Authentifizierung für {name} ist abgelaufen oder erfordert eine erneute Anmeldung via browser-daemon.",
       "fix_flow": {
         "step": {
           "reauth": {
