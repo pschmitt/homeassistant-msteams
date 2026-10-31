@@ -112,3 +112,119 @@ def test_coordinator_token_persistence():
         entry,
         data={"refresh_token": "new_rotated_token", "tenant_id": "test"},
     )
+
+
+@pytest.mark.asyncio
+async def test_meeting_event_details_persist_through_updates_and_end():
+    """Every event carries meeting details, including after the meeting disappears."""
+    hass = MagicMock()
+    entry = MagicMock(entry_id="test", title="test", options={}, data={})
+    client = MagicMock()
+    client.auth = MagicMock()
+    client.get_presence = AsyncMock(
+        return_value={"activity": "Available", "availability": "Available"}
+    )
+    now = datetime.now(UTC)
+    meeting = {
+        "id": "meeting-1",
+        "subject": "Planning",
+        "description": "Agenda",
+        "join_url": "https://example.com/join",
+        "start_time": (now - timedelta(minutes=1)).isoformat(),
+        "end_time": (now + timedelta(minutes=30)).isoformat(),
+        "organizer_name": "Organizer",
+        "location": "Online",
+        "thread_id": "thread-1",
+        "is_online": True,
+    }
+    client.get_calendar_meetings = AsyncMock(return_value=[meeting])
+    client.get_active_call_and_unread = AsyncMock(return_value=(None, 0))
+    client.get_thread_participants = AsyncMock(return_value=["Alice", "Bob"])
+    coordinator = TeamsDataUpdateCoordinator(hass, entry, client)
+    events = []
+    coordinator.register_event_listener(lambda kind, data: events.append((kind, data)))
+
+    await coordinator._async_update_data()
+    started = events[-1][1]
+    assert events[-1][0] == EVENT_MEETING_STARTED
+    assert started["description"] == "Agenda"
+    assert started["url"] == started["join_url"] == "https://example.com/join"
+    assert started["participants"] == ["Alice", "Bob"]
+
+    updated = {**meeting, "description": "Updated agenda"}
+    client.get_calendar_meetings.return_value = [updated]
+    await coordinator._async_update_data()
+    client.get_calendar_meetings.return_value = []
+    await coordinator._async_update_data()
+    kind, ended = events[-1]
+    assert kind == EVENT_MEETING_ENDED
+    assert ended["meeting_id"] == "meeting-1"
+    assert ended["title"] == "Planning"
+    assert ended["description"] == "Updated agenda"
+    assert ended["join_url"] == "https://example.com/join"
+    assert ended["participants_count"] == 2
+    await coordinator._async_update_data()
+    assert sum(kind == EVENT_MEETING_ENDED for kind, _ in events) == 1
+
+
+@pytest.mark.asyncio
+async def test_reminder_includes_meeting_details():
+    hass = MagicMock()
+    entry = MagicMock(entry_id="test", title="test", options={}, data={})
+    client = MagicMock()
+    client.auth = MagicMock()
+    client.get_presence = AsyncMock(return_value={})
+    now = datetime.now(UTC)
+    client.get_calendar_meetings = AsyncMock(
+        return_value=[
+            {
+                "id": "next",
+                "subject": "Next",
+                "description": "Topics",
+                "join_url": "https://example.com/join",
+                "start_time": (now + timedelta(minutes=4)).isoformat(),
+                "end_time": (now + timedelta(minutes=34)).isoformat(),
+                "organizer_name": "Organizer",
+            }
+        ]
+    )
+    client.get_active_call_and_unread = AsyncMock(return_value=(None, 0))
+    coordinator = TeamsDataUpdateCoordinator(hass, entry, client)
+    events = []
+    coordinator.register_event_listener(lambda kind, data: events.append((kind, data)))
+    await coordinator._async_update_data()
+    kind, reminder = events[0]
+    assert kind == EVENT_MEETING_REMINDER
+    assert reminder["description"] == "Topics"
+    assert reminder["title"] == "Next"
+    assert reminder["organizer_name"] == "Organizer"
+    assert reminder["url"] == reminder["join_url"]
+
+
+@pytest.mark.asyncio
+async def test_switching_meetings_ends_previous_before_starting_next():
+    hass = MagicMock()
+    entry = MagicMock(entry_id="test", title="test", options={}, data={})
+    client = MagicMock()
+    client.auth = MagicMock()
+    client.get_presence = AsyncMock(return_value={})
+    client.get_active_call_and_unread = AsyncMock(return_value=(None, 0))
+    now = datetime.now(UTC)
+    meeting = {
+        "id": "one",
+        "subject": "First",
+        "start_time": (now - timedelta(minutes=2)).isoformat(),
+        "end_time": (now + timedelta(minutes=20)).isoformat(),
+    }
+    client.get_calendar_meetings = AsyncMock(return_value=[meeting])
+    coordinator = TeamsDataUpdateCoordinator(hass, entry, client)
+    events = []
+    coordinator.register_event_listener(lambda kind, data: events.append((kind, data)))
+    await coordinator._async_update_data()
+    client.get_calendar_meetings.return_value = [{**meeting, "id": "two", "subject": "Second"}]
+    await coordinator._async_update_data()
+    assert [(kind, data["meeting_id"]) for kind, data in events] == [
+        (EVENT_MEETING_STARTED, "one"),
+        (EVENT_MEETING_ENDED, "one"),
+        (EVENT_MEETING_STARTED, "two"),
+    ]

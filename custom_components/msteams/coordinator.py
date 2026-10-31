@@ -42,6 +42,43 @@ def _parse_iso(iso_str: str | None) -> datetime | None:
         return None
 
 
+def _meeting_event_data(
+    meeting: dict[str, Any] | None,
+    *,
+    meeting_id: str | None = None,
+    subject: str | None = None,
+    url: str | None = None,
+) -> dict[str, Any]:
+    """Create consistent, serializable details for every meeting event."""
+    meeting = meeting or {}
+    title = meeting.get("subject") or subject
+    join_url = meeting.get("join_url") or url
+    result = {
+        "meeting_id": meeting.get("id") or meeting_id,
+        "subject": title,
+        "title": title,
+        "url": join_url,
+        "join_url": join_url,
+    }
+    for key in (
+        "description",
+        "start_time",
+        "end_time",
+        "organizer_name",
+        "organizer_email",
+        "location",
+        "thread_id",
+        "is_online",
+        "is_organizer",
+        "my_response",
+        "participants",
+        "participants_count",
+    ):
+        if meeting.get(key) is not None:
+            result[key] = meeting[key]
+    return result
+
+
 class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator to manage fetching Teams data from private APIs."""
 
@@ -65,6 +102,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=poll_interval),
         )
         self._previous_meeting_id: str | None = None
+        self._previous_meeting_data: dict[str, Any] | None = None
         self._sent_reminders: set[str] = set()
         self._event_listeners: list[Any] = []
         self._push_refresh_task: asyncio.Task | None = None
@@ -219,12 +257,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._sent_reminders.add(reminder_key)
                     self._fire_meeting_event(
                         EVENT_MEETING_REMINDER,
-                        {
-                            "meeting_id": meeting_id,
-                            "subject": m.get("subject"),
-                            "start_time": m.get("start_time"),
-                            "join_url": m.get("join_url"),
-                        },
+                        _meeting_event_data(m),
                     )
 
         # Merge live call awareness, presence, and calendar status
@@ -311,27 +344,6 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             active_title if in_a_meeting else None
         )
 
-        # Trigger meeting lifecycle events
-        if in_a_meeting and self._previous_meeting_id != current_meeting_id:
-            self._previous_meeting_id = current_meeting_id
-            self._fire_meeting_event(
-                EVENT_MEETING_STARTED,
-                {
-                    "meeting_id": current_meeting_id,
-                    "subject": active_title,
-                    "url": active_url,
-                },
-            )
-        elif not in_a_meeting and self._previous_meeting_id is not None:
-            prev_id = self._previous_meeting_id
-            self._previous_meeting_id = None
-            self._fire_meeting_event(
-                EVENT_MEETING_ENDED,
-                {
-                    "meeting_id": prev_id,
-                },
-            )
-
         # Resolve participants for next meeting and active meeting
         if next_meeting and next_meeting.get("thread_id"):
             try:
@@ -350,6 +362,31 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 active_meeting["participants_count"] = len(active_meeting["participants"])
             except Exception as err:
                 _LOGGER.debug("Failed to resolve participants for active meeting: %s", err)
+
+        # Keep the latest details so the ended event remains useful after the
+        # meeting has disappeared from presence and the calendar view.
+        if in_a_meeting:
+            event_data = _meeting_event_data(
+                active_meeting, meeting_id=current_meeting_id, subject=active_title, url=active_url
+            )
+            if self._previous_meeting_id != current_meeting_id:
+                if self._previous_meeting_data is not None:
+                    self._fire_meeting_event(EVENT_MEETING_ENDED, self._previous_meeting_data)
+                self._previous_meeting_id = current_meeting_id
+                self._previous_meeting_data = event_data
+                self._fire_meeting_event(EVENT_MEETING_STARTED, event_data)
+            else:
+                self._previous_meeting_data = {
+                    **(self._previous_meeting_data or {}),
+                    **{key: value for key, value in event_data.items() if value not in (None, "")},
+                }
+        elif self._previous_meeting_id is not None:
+            self._fire_meeting_event(
+                EVENT_MEETING_ENDED,
+                self._previous_meeting_data or {"meeting_id": self._previous_meeting_id},
+            )
+            self._previous_meeting_id = None
+            self._previous_meeting_data = None
 
         return {
             "presence": presence,

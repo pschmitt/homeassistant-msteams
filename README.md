@@ -17,7 +17,7 @@ Modern Microsoft Teams custom component for Home Assistant powered by Microsoft 
   - `binary_sensor.msteams_meeting_muted`: Live microphone mute status in the active Teams web session.
   - `binary_sensor.msteams_connected`: Real-time API connection and token status.
 - **Events**:
-  - `event.msteams_meeting_event`: Lifecycle events (`meeting_started`, `meeting_ended`, `meeting_reminder`) with meeting metadata, ideal for lighting automations and "on-air" status signs.
+  - `event.msteams_meeting_event`: Lifecycle events (`meeting_started`, `meeting_ended`, `meeting_reminder`) include the meeting ID, title, join URL, description, start/end times, organizer, location, and participants when available. The ended event retains the last known meeting details.
 - **Notifications**:
   - `notify.msteams`: Sends Markdown notifications to the configured default conversation, or your Teams notes if no default is set. Use `msteams.send_message` to select a conversation per message.
 - **Buttons**:
