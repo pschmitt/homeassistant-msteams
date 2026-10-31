@@ -485,6 +485,7 @@ class TeamsAuth:
                     engine="chromium",
                     default_tabs=False,
                     node=node_name,
+                    idle_timeout_minutes=5,
                 )
                 created_session_id = session_info["id"]
                 session_id = created_session_id
@@ -492,6 +493,18 @@ class TeamsAuth:
                 raise TeamsAuthError(
                     f"Failed to start browser-daemon session for profile '{profile}': {err}"
                 ) from err
+        else:
+            if hasattr(bd_client, "async_set_idle_timeout"):
+                try:
+                    await bd_client.async_set_idle_timeout(
+                        session_id, minutes=5, node=node_name
+                    )
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Could not set idle timeout on attached session %s: %s",
+                        session_id,
+                        err,
+                    )
 
         tab_id: str | None = None
         opened_new_tab = False
@@ -575,11 +588,21 @@ class TeamsAuth:
                         created_session_id,
                         err,
                     )
-            elif opened_new_tab and tab_id:
-                try:
-                    await bd_client.async_close_tab(tab_id, node=node_name)
-                except Exception as err:
-                    _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
+            else:
+                if opened_new_tab and tab_id:
+                    try:
+                        await bd_client.async_close_tab(tab_id, node=node_name)
+                    except Exception as err:
+                        _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
+                if session_id and hasattr(bd_client, "async_set_idle_timeout"):
+                    try:
+                        await bd_client.async_set_idle_timeout(
+                            session_id, minutes=5, node=node_name
+                        )
+                    except Exception as err:
+                        _LOGGER.debug(
+                            "Failed to set idle timeout on session %s: %s", session_id, err
+                        )
 
         auth = cls(
             session=session,
