@@ -285,8 +285,12 @@ class BrowserDaemonClient:
 
 
 def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
+    """Wait for both the refresh credential and an unexpired Substrate JWT."""
+    import base64
     import json
 
+    refresh_token = None
+    valid_substrate = False
     for value in (data.get("local_storage") or {}).values():
         try:
             entry = json.loads(value)
@@ -295,10 +299,21 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
                 and entry.get("secret")
                 and entry.get("clientId")
             ):
-                return {"refresh_token": entry["secret"]}
-        except (ValueError, AttributeError, TypeError):
+                refresh_token = entry["secret"]
+            if "SubstrateSearch" in entry.get("target", ""):
+                token = entry.get("secret", "")
+                if not token.startswith("ey"):
+                    continue
+                payload = token.split(".")[1]
+                payload += "=" * (-len(payload) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+                if isinstance(claims.get("exp"), (int, float)) and claims["exp"] > time.time():
+                    valid_substrate = True
+        except (ValueError, AttributeError, TypeError, IndexError):
             continue
-    raise BrowserAuthError("Teams refresh token unavailable")
+    if not refresh_token or not valid_substrate:
+        raise BrowserAuthError("Teams session is not ready")
+    return {"refresh_token": refresh_token}
 
 
 async def _main() -> int:

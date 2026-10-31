@@ -44,6 +44,7 @@ if "homeassistant" not in sys.modules:
         pass
 
     exceptions.ConfigEntryAuthFailed = ConfigEntryAuthFailed
+    exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
     sys.modules["homeassistant.exceptions"] = exceptions
     ha.exceptions = exceptions
 

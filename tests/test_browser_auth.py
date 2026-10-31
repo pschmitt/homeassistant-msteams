@@ -106,3 +106,24 @@ async def test_http_adapter_with_live_test_server():
     finally:
         await runner.cleanup()
     assert ("DELETE", "/api/sessions/test-session") in calls
+
+
+def test_node_readiness_requires_refresh_and_unexpired_substrate():
+    import base64
+    import json
+    import time
+
+    from custom_components.msteams.browser_auth import _validate_refresh_token
+
+    refresh = json.dumps({"credentialType": "RefreshToken", "secret": "fake", "clientId": "test"})
+    data = {"local_storage": {"refresh": refresh}}
+    with pytest.raises(BrowserAuthError):
+        _validate_refresh_token(data)
+    jwt_body = (
+        base64.urlsafe_b64encode(json.dumps({"exp": time.time() + 60}).encode())
+        .decode()
+        .rstrip("=")
+    )
+    jwt = f"eyJhbGciOiJub25lIn0.{jwt_body}.fake"
+    data["local_storage"]["access"] = json.dumps({"target": "SubstrateSearch", "secret": jwt})
+    assert _validate_refresh_token(data)["refresh_token"] == "fake"

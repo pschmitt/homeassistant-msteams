@@ -117,3 +117,17 @@ async def test_notify_entity(mock_coordinator):
         reply_to_message_id=None,
         subject="CI Alert",
     )
+
+
+@pytest.mark.asyncio
+async def test_notify_defaults_to_self_and_propagates_failures(mock_coordinator):
+    from homeassistant.exceptions import HomeAssistantError
+
+    mock_coordinator.entry.data = {}
+    mock_coordinator.client.send_message = AsyncMock()
+    notify = TeamsNotifyEntity(mock_coordinator)
+    await notify.async_send_message(message="test")
+    assert mock_coordinator.client.send_message.await_args.kwargs["conversation_id"] == "48:notes"
+    mock_coordinator.client.send_message.side_effect = RuntimeError("failed")
+    with pytest.raises(HomeAssistantError):
+        await notify.async_send_message(message="test")

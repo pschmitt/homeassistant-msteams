@@ -19,7 +19,7 @@ Modern Microsoft Teams custom component for Home Assistant powered by Microsoft 
 - **Events**:
   - `event.msteams_meeting_event`: Lifecycle events (`meeting_started`, `meeting_ended`, `meeting_reminder`) with meeting metadata, ideal for lighting automations and "on-air" status signs.
 - **Notifications**:
-  - `notify.msteams`: Native Home Assistant notify entity supporting direct messages, channel threads, and Markdown formatting.
+  - `notify.msteams`: Sends Markdown notifications to the configured default conversation, or your Teams notes if no default is set. Use `msteams.send_message` to select a conversation per message.
 - **Buttons**:
   - `button.msteams_refresh_tokens`: Force immediate token refresh.
   - `button.msteams_toggle_mute`: Instantly toggle microphone mute in your active meeting via `browser-daemon`.

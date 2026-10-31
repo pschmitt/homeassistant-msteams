@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.notify import NotifyEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_DEFAULT_CONVERSATION_ID, DOMAIN
@@ -49,14 +50,8 @@ class TeamsNotifyEntity(TeamsEntity, NotifyEntity):
             data.get("conversation_id")
             or self.coordinator.entry.options.get(CONF_DEFAULT_CONVERSATION_ID)
             or self.coordinator.entry.data.get(CONF_DEFAULT_CONVERSATION_ID)
+            or "48:notes"
         )
-
-        if not conversation_id:
-            _LOGGER.error(
-                "Cannot send Teams notification: no default conversation ID configured for %s",
-                self.coordinator.entry.title,
-            )
-            return
 
         reply_to = data.get("reply_to_message_id")
         try:
@@ -67,6 +62,4 @@ class TeamsNotifyEntity(TeamsEntity, NotifyEntity):
                 subject=title,
             )
         except Exception as err:
-            _LOGGER.exception(
-                "Failed to send notification to Teams conversation %s: %s", conversation_id, err
-            )
+            raise HomeAssistantError("Failed to send Teams notification") from err
