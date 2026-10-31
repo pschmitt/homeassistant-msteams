@@ -33,7 +33,7 @@ DEFAULT_PROFILE = "work"
 DEFAULT_BROWSER_DAEMON_URL = "https://browser.fnuc.ts.brkn.lol"
 DEFAULT_POLL_INTERVAL = 30
 DEFAULT_REGION = "emea"
-DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com/v2/"
+DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"
 
 # Teams OAuth / Client constants
 TEAMS_CLIENT_ID = "5e3ce6c0-2b1f-4285-8d4b-75ee78787346"
