@@ -54,12 +54,14 @@ class TeamsNotifyEntity(TeamsEntity, NotifyEntity):
         )
 
         reply_to = data.get("reply_to_message_id")
+        is_channel = conversation_id.endswith("@thread.tacv2")
+        content = f"**{title}**\n\n{message}" if title and not is_channel else message
         try:
             await self.coordinator.client.send_message(
                 conversation_id=conversation_id,
-                content=message,
+                content=content,
                 reply_to_message_id=reply_to,
-                subject=title,
+                subject=title if is_channel else None,
             )
         except Exception as err:
             raise HomeAssistantError("Failed to send Teams notification") from err

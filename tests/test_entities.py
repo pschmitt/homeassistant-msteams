@@ -113,9 +113,9 @@ async def test_notify_entity(mock_coordinator):
     )
     mock_coordinator.client.send_message.assert_awaited_once_with(
         conversation_id="19:notes@thread.v2",
-        content="Build finished!",
+        content="**CI Alert**\n\nBuild finished!",
         reply_to_message_id=None,
-        subject="CI Alert",
+        subject=None,
     )
 
 
@@ -131,3 +131,16 @@ async def test_notify_defaults_to_self_and_propagates_failures(mock_coordinator)
     mock_coordinator.client.send_message.side_effect = RuntimeError("failed")
     with pytest.raises(HomeAssistantError):
         await notify.async_send_message(message="test")
+
+
+@pytest.mark.asyncio
+async def test_notify_channel_uses_thread_subject(mock_coordinator):
+    mock_coordinator.entry.data = {"default_conversation_id": "channel@thread.tacv2"}
+    mock_coordinator.client.send_message = AsyncMock()
+    await TeamsNotifyEntity(mock_coordinator).async_send_message(message="Body", title="Title")
+    mock_coordinator.client.send_message.assert_awaited_once_with(
+        conversation_id="channel@thread.tacv2",
+        content="Body",
+        reply_to_message_id=None,
+        subject="Title",
+    )

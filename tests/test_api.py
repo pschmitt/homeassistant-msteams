@@ -235,3 +235,17 @@ async def test_auth_self_recovery_on_refresh_failure():
     assert success is True
     assert auth.refresh_token == "new_recovered_token"
     auth.async_from_browser_daemon.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_message_places_channel_subject_in_properties():
+    session = MagicMock()
+    response = AsyncMock()
+    response.status = 201
+    response.json = AsyncMock(return_value={})
+    session.post.return_value = AsyncMock(__aenter__=AsyncMock(return_value=response))
+    auth = MagicMock(session=session, skype_token="fake", spaces_token="fake", csa_token="fake")
+    client = TeamsApiClient(auth)
+    client._ensure_auth = AsyncMock()
+    await client.send_message("channel@thread.tacv2", "Body", subject="Title")
+    assert session.post.call_args.kwargs["json"]["properties"] == {"subject": "Title"}

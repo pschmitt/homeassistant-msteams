@@ -775,7 +775,7 @@ class TeamsApiClient:
             "imdisplayname": self.auth.user_display_name,
         }
         if subject:
-            payload["subject"] = subject
+            payload["properties"] = {"subject": subject}
 
         async with self.auth.session.post(
             url,
