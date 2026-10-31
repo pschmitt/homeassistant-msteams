@@ -594,7 +594,9 @@ class TeamsAuth:
             browser_daemon_profile=profile,
             browser_daemon_secret=secret,
         )
+        auth._is_recovering = True
         await auth.async_refresh_tokens()
+        auth._is_recovering = False
         return auth
 
 
