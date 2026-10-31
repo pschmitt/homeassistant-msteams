@@ -93,6 +93,23 @@ def _markdown_to_teams_html(text: str) -> str:
     return "".join(html_paragraphs) if html_paragraphs else f"<p>{escaped}</p>"
 
 
+def _is_teams_host(url: str | None) -> bool:
+    """Return True if url belongs to Microsoft Teams or Azure AD login."""
+    if not url:
+        return False
+    try:
+        from urllib.parse import urlparse
+
+        host = urlparse(url).netloc.lower()
+        return host in (
+            "teams.microsoft.com",
+            "teams.cloud.microsoft",
+            "login.microsoftonline.com",
+        )
+    except Exception:
+        return False
+
+
 class TeamsAuth:
     """Handles OAuth token lifecycle, refresh and storage."""
 
@@ -446,24 +463,28 @@ class TeamsAuth:
                 cluster_secret=secret,
             )
 
-        # 1. Check existing sessions
+        # 1. Fetch overview
         try:
-            sessions = await bd_client.async_list_sessions()
+            overview = await bd_client.async_get_overview()
         except Exception as err:
             raise TeamsAuthError(f"Failed to connect to browser-daemon: {err}") from err
 
-        matching_session = next((s for s in sessions if s.get("profile") == profile), None)
-        created_session_id: str | None = None
-        session_id: str | None = None
+        profiles = overview.get("profiles", [])
+        prof = next((p for p in profiles if p.get("name") == profile), None)
+        if not prof:
+            raise TeamsAuthError(f"browser-daemon has no profile '{profile}'")
 
-        if matching_session:
-            session_id = matching_session["id"]
-        else:
+        node_name = prof.get("node_name")
+        session_id = prof.get("session_id")
+        created_session_id: str | None = None
+
+        if not session_id:
             try:
                 session_info = await bd_client.async_create_session(
                     profile=profile,
                     engine="chromium",
                     default_tabs=False,
+                    node=node_name,
                 )
                 created_session_id = session_info["id"]
                 session_id = created_session_id
@@ -475,20 +496,31 @@ class TeamsAuth:
         tab_id: str | None = None
         opened_new_tab = False
         try:
-            # 2. Check open tabs
-            tabs = await bd_client.async_get_tabs()
-            for t in tabs:
-                t_session = t.get("session_id")
-                t_url = t.get("url", "")
-                if (session_id is None or t_session == session_id) and (
-                    "teams.microsoft.com" in t_url or "login.microsoftonline.com" in t_url
+            # 2. Check overview targets for an existing Teams tab in this session
+            for target in overview.get("targets", []):
+                if (
+                    target.get("sessionId") == session_id
+                    and target.get("type") == "page"
+                    and _is_teams_host(target.get("url"))
                 ):
-                    tab_id = t.get("id")
+                    tab_id = target.get("id")
                     break
 
             if not tab_id:
+                try:
+                    tabs = await bd_client.async_get_tabs(node=node_name)
+                    for t in tabs:
+                        t_session = t.get("session_id")
+                        t_url = t.get("url", "")
+                        if (session_id is None or t_session == session_id) and _is_teams_host(t_url):
+                            tab_id = t.get("id")
+                            break
+                except Exception as err:
+                    _LOGGER.debug("Could not query open tabs: %s", err)
+
+            if not tab_id:
                 new_tab = await bd_client.async_open_tab(
-                    DEFAULT_TEAMS_BASE_URL, session_id=session_id
+                    DEFAULT_TEAMS_BASE_URL, session_id=session_id, node=node_name
                 )
                 tab_id = new_tab.get("id")
                 opened_new_tab = True
@@ -500,28 +532,27 @@ class TeamsAuth:
             last_err: Exception | None = None
 
             while time.time() - start_time < max_wait:
-                await asyncio.sleep(2)
                 try:
                     auth_data = await bd_client.async_export_auth(
                         tab_id,
                         session_id=session_id,
-                        urls=[
-                            "https://teams.microsoft.com",
-                            "https://teams.cloud.microsoft",
-                            "https://login.microsoftonline.com",
-                        ],
+                        urls=[],
                         storage=True,
+                        node=node_name,
                     )
-                    try:
-                        parsed = cls.parse_credentials(auth_data)
-                        if parsed.get("refresh_token"):
-                            creds = parsed
-                            break
-                    except TeamsAuthError:
-                        pass
+                    url = auth_data.get("url", "")
+                    if _is_teams_host(url) and auth_data.get("local_storage"):
+                        try:
+                            parsed = cls.parse_credentials(auth_data)
+                            if parsed.get("refresh_token"):
+                                creds = parsed
+                                break
+                        except TeamsAuthError:
+                            pass
                 except Exception as err:
                     last_err = err
                     _LOGGER.debug("Waiting for Teams auth export: %s", err)
+                await asyncio.sleep(2)
 
             if not creds:
                 raise TeamsAuthError(
@@ -537,7 +568,7 @@ class TeamsAuth:
         finally:
             if created_session_id:
                 try:
-                    await bd_client.async_delete_session(created_session_id)
+                    await bd_client.async_delete_session(created_session_id, node=node_name)
                 except Exception as err:
                     _LOGGER.debug(
                         "Failed to clean up temporary browser session %s: %s",
@@ -546,7 +577,7 @@ class TeamsAuth:
                     )
             elif opened_new_tab and tab_id:
                 try:
-                    await bd_client.async_close_tab(tab_id)
+                    await bd_client.async_close_tab(tab_id, node=node_name)
                 except Exception as err:
                     _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
 
