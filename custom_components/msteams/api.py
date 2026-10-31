@@ -496,9 +496,7 @@ class TeamsAuth:
         else:
             if hasattr(bd_client, "async_set_idle_timeout"):
                 try:
-                    await bd_client.async_set_idle_timeout(
-                        session_id, minutes=5, node=node_name
-                    )
+                    await bd_client.async_set_idle_timeout(session_id, minutes=5, node=node_name)
                 except Exception as err:
                     _LOGGER.debug(
                         "Could not set idle timeout on attached session %s: %s",
@@ -525,7 +523,9 @@ class TeamsAuth:
                     for t in tabs:
                         t_session = t.get("session_id")
                         t_url = t.get("url", "")
-                        if (session_id is None or t_session == session_id) and _is_teams_host(t_url):
+                        if (session_id is None or t_session == session_id) and _is_teams_host(
+                            t_url
+                        ):
                             tab_id = t.get("id")
                             break
                 except Exception as err:
@@ -598,8 +598,7 @@ class TeamsAuth:
                         in_use = True
                     tabs = await bd_client.async_get_tabs(node=node_name)
                     if any(
-                        (t.get("sessionId") or t.get("session_id")) == target_sid
-                        and t.get("owner")
+                        (t.get("sessionId") or t.get("session_id")) == target_sid and t.get("owner")
                         for t in tabs
                     ):
                         in_use = True
