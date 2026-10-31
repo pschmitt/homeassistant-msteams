@@ -579,29 +579,53 @@ class TeamsAuth:
                 f"Failed to extract Teams auth from browser-daemon: {err}"
             ) from err
         finally:
-            if created_session_id:
+            if opened_new_tab and tab_id:
                 try:
-                    await bd_client.async_delete_session(created_session_id, node=node_name)
+                    await bd_client.async_close_tab(tab_id, node=node_name)
+                except Exception as err:
+                    _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
+
+            target_sid = created_session_id or session_id
+            if target_sid:
+                in_use = False
+                try:
+                    s_info = await bd_client.async_get_session(target_sid, node=node_name)
+                    if (
+                        s_info.get("client_count", 0) > 0
+                        or s_info.get("clients")
+                        or s_info.get("viewer_count", 0) > 0
+                    ):
+                        in_use = True
+                    tabs = await bd_client.async_get_tabs(node=node_name)
+                    if any(
+                        (t.get("sessionId") or t.get("session_id")) == target_sid
+                        and t.get("owner")
+                        for t in tabs
+                    ):
+                        in_use = True
                 except Exception as err:
                     _LOGGER.debug(
-                        "Failed to clean up temporary browser session %s: %s",
-                        created_session_id,
-                        err,
+                        "Could not check usage for browser session %s: %s", target_sid, err
                     )
-            else:
-                if opened_new_tab and tab_id:
+                    in_use = not bool(created_session_id)
+
+                if not in_use:
                     try:
-                        await bd_client.async_close_tab(tab_id, node=node_name)
+                        await bd_client.async_delete_session(target_sid, node=node_name)
                     except Exception as err:
-                        _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
-                if session_id and hasattr(bd_client, "async_set_idle_timeout"):
+                        _LOGGER.debug(
+                            "Failed to delete unused browser session %s: %s", target_sid, err
+                        )
+                elif hasattr(bd_client, "async_set_idle_timeout"):
                     try:
                         await bd_client.async_set_idle_timeout(
-                            session_id, minutes=5, node=node_name
+                            target_sid, minutes=5, node=node_name
                         )
                     except Exception as err:
                         _LOGGER.debug(
-                            "Failed to set idle timeout on session %s: %s", session_id, err
+                            "Failed to set idle timeout on in-use session %s: %s",
+                            target_sid,
+                            err,
                         )
 
         auth = cls(
