@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,6 +22,7 @@ from .const import (
     EVENT_MEETING_REMINDER,
     EVENT_MEETING_STARTED,
 )
+from .trouter import TeamsTrouter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,9 +67,33 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._previous_meeting_id: str | None = None
         self._sent_reminders: set[str] = set()
         self._event_listeners: list[Any] = []
+        self._push_refresh_task: asyncio.Task | None = None
+        self.trouter = TeamsTrouter(
+            client.auth,
+            self._schedule_push_refresh,
+            lambda coro: entry.async_create_background_task(
+                hass, coro, f"{DOMAIN}_{entry.entry_id}_push"
+            ),
+        )
 
         # Persist rotated tokens to config entry whenever they refresh
         self.client.auth.on_tokens_refreshed = self._handle_tokens_refreshed
+
+    @callback
+    def _schedule_push_refresh(self) -> None:
+        """Coalesce bursts of push events into a single refresh."""
+        if self._push_refresh_task is None or self._push_refresh_task.done():
+            self._push_refresh_task = self.hass.async_create_task(self._refresh_after_push())
+
+    async def _refresh_after_push(self) -> None:
+        await asyncio.sleep(2)
+        await self.async_request_refresh()
+
+    async def async_stop_push(self) -> None:
+        await self.trouter.stop()
+        if self._push_refresh_task:
+            self._push_refresh_task.cancel()
+            await asyncio.gather(self._push_refresh_task, return_exceptions=True)
 
     @callback
     def _handle_tokens_refreshed(self, exported: dict[str, Any]) -> None:
@@ -150,7 +176,9 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                 except Exception as retry_err:
                     _LOGGER.error("Data fetch failed after token recovery: %s", retry_err)
-                    raise UpdateFailed(f"Error communicating with Teams API: {retry_err}") from retry_err
+                    raise UpdateFailed(
+                        f"Error communicating with Teams API: {retry_err}"
+                    ) from retry_err
             else:
                 _LOGGER.error("Teams authentication failed and recovery unsuccessful: %s", err)
                 ir.async_create_issue(

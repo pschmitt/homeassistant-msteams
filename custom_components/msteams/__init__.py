@@ -73,9 +73,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Per AGENTS.md guidelines: never block async_setup_entry on initial network refresh!
     # Run the initial refresh in the background.
+    async def async_start() -> None:
+        await coordinator.async_refresh()
+        coordinator.trouter.start()
+
     entry.async_create_background_task(
         hass,
-        coordinator.async_refresh(),
+        async_start(),
         f"{DOMAIN}_{entry.entry_id}_refresh",
     )
 
@@ -100,7 +104,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if coordinator:
+            await coordinator.async_stop_push()
 
     if not hass.data[DOMAIN]:
         await async_unload_services(hass)

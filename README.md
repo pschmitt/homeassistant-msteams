@@ -42,7 +42,8 @@ flowchart LR
 
 1. **Initial Authentication**: Credentials and MSAL refresh tokens are extracted directly from a signed-in `browser-daemon` profile (e.g. `work`).
 2. **Token Lifecycle**: Access tokens are refreshed via fast, direct HTTP requests to Azure AD without opening browser windows.
-3. **Meeting Controls**: Active meeting detection and microphone mute toggling are executed via `browser-daemon` and Chrome DevTools Protocol against the running Teams page.
+3. **Live updates**: An independent Teams push connection triggers refreshes for chat and call events. Periodic polling remains enabled for presence, calendar changes, and missed events.
+4. **Meeting Controls**: Active meeting detection and microphone mute toggling are executed via `browser-daemon` and Chrome DevTools Protocol against the running Teams page.
 
 ## Installation
 
