@@ -106,6 +106,10 @@ class TeamsAuth:
         user_display_name: str | None = None,
         user_email: str | None = None,
         on_tokens_refreshed: Callable[[dict[str, Any]], Any] | None = None,
+        hass: Any | None = None,
+        browser_daemon_url: str | None = None,
+        browser_daemon_profile: str = DEFAULT_PROFILE,
+        browser_daemon_secret: str | None = None,
     ) -> None:
         self.session = session
         self.refresh_token = refresh_token
@@ -115,6 +119,11 @@ class TeamsAuth:
         self.user_display_name = user_display_name or "User"
         self.user_email = user_email
         self.on_tokens_refreshed = on_tokens_refreshed
+        self.hass = hass
+        self.browser_daemon_url = browser_daemon_url
+        self.browser_daemon_profile = browser_daemon_profile
+        self.browser_daemon_secret = browser_daemon_secret
+        self._is_recovering = False
 
         self.substrate_token: str | None = None
         self.spaces_token: str | None = None
@@ -142,9 +151,61 @@ class TeamsAuth:
             "user_email": self.user_email,
         }
 
+    async def _async_recover_via_browser_daemon(self) -> bool:
+        """Attempt to restore authentication state via browser-daemon."""
+        if self._is_recovering:
+            return False
+        if not self.hass and not self.browser_daemon_url:
+            return False
+
+        self._is_recovering = True
+        try:
+            new_auth = await self.async_from_browser_daemon(
+                session=self.session,
+                browser_daemon_url=self.browser_daemon_url,
+                profile=self.browser_daemon_profile,
+                secret=self.browser_daemon_secret,
+                hass=self.hass,
+            )
+            self.refresh_token = new_auth.refresh_token
+            self.tenant_id = new_auth.tenant_id
+            self.client_id = new_auth.client_id
+            self.substrate_token = new_auth.substrate_token
+            self.spaces_token = new_auth.spaces_token
+            self.csa_token = new_auth.csa_token
+            self.skype_token = new_auth.skype_token
+            self.tokens_expires_at = new_auth.tokens_expires_at
+            if new_auth.user_mri:
+                self.user_mri = new_auth.user_mri
+            if new_auth.user_display_name:
+                self.user_display_name = new_auth.user_display_name
+            if new_auth.user_email:
+                self.user_email = new_auth.user_email
+
+            if self.on_tokens_refreshed:
+                try:
+                    res = self.on_tokens_refreshed(self.export_data())
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as err:
+                    _LOGGER.warning("Error in on_tokens_refreshed callback: %s", err)
+
+            _LOGGER.info(
+                "Successfully recovered Teams authentication via browser-daemon for %s",
+                self.user_display_name,
+            )
+            return True
+        except Exception as err:
+            _LOGGER.warning("Could not recover Teams authentication via browser-daemon: %s", err)
+            return False
+        finally:
+            self._is_recovering = False
+
     async def async_refresh_tokens(self) -> bool:
         """Refresh access tokens using the refresh token."""
         if not self.refresh_token:
+            if await self._async_recover_via_browser_daemon():
+                return True
             raise TeamsAuthError("No refresh token available to refresh authentication")
 
         token_url = TOKEN_ENDPOINT.format(tenantId=self.tenant_id)
@@ -179,6 +240,8 @@ class TeamsAuth:
                             "Token refresh failed for %s (%s): %s", key, resp.status, err_text
                         )
                         if resp.status in (400, 401):
+                            if await self._async_recover_via_browser_daemon():
+                                return True
                             raise TeamsAuthError(f"OAuth token refresh rejected: {err_text}")
                         continue
                     payload = await resp.json()
@@ -191,6 +254,8 @@ class TeamsAuth:
                 raise TeamsAuthError(f"Network error refreshing tokens: {err}") from err
 
         if not new_tokens.get("spaces"):
+            if await self._async_recover_via_browser_daemon():
+                return True
             raise TeamsAuthError("Failed to obtain Skype Spaces access token")
 
         self.refresh_token = current_refresh_token
@@ -427,14 +492,41 @@ class TeamsAuth:
                 )
                 tab_id = new_tab.get("id")
                 opened_new_tab = True
-                # Allow a short period for session storage / auth state to load
-                await asyncio.sleep(4)
 
-            # 3. Export auth
-            auth_data = await bd_client.async_export_auth(
-                tab_id, session_id=session_id, storage=True
-            )
-            creds = cls.parse_credentials(auth_data)
+            # 3. Export auth with polling to allow page navigation and storage population
+            creds = None
+            max_wait = 45
+            start_time = time.time()
+            last_err: Exception | None = None
+
+            while time.time() - start_time < max_wait:
+                await asyncio.sleep(2)
+                try:
+                    auth_data = await bd_client.async_export_auth(
+                        tab_id,
+                        session_id=session_id,
+                        urls=[
+                            "https://teams.microsoft.com",
+                            "https://teams.cloud.microsoft",
+                            "https://login.microsoftonline.com",
+                        ],
+                        storage=True,
+                    )
+                    try:
+                        parsed = cls.parse_credentials(auth_data)
+                        if parsed.get("refresh_token"):
+                            creds = parsed
+                            break
+                    except TeamsAuthError:
+                        pass
+                except Exception as err:
+                    last_err = err
+                    _LOGGER.debug("Waiting for Teams auth export: %s", err)
+
+            if not creds:
+                raise TeamsAuthError(
+                    f"Timed out waiting for Teams authentication from browser-daemon: {last_err or 'RefreshToken not found in page storage'}"
+                )
 
         except TeamsAuthError:
             raise
@@ -466,6 +558,10 @@ class TeamsAuth:
             user_display_name=creds.get("user_display_name"),
             user_email=creds.get("user_email"),
             user_mri=creds.get("user_mri"),
+            hass=hass,
+            browser_daemon_url=browser_daemon_url,
+            browser_daemon_profile=profile,
+            browser_daemon_secret=secret,
         )
         await auth.async_refresh_tokens()
         return auth

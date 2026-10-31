@@ -198,3 +198,40 @@ async def test_api_send_message():
     call_kwargs = mock_session.post.call_args.kwargs
     assert "<strong>world</strong>" in call_kwargs["json"]["content"]
     assert call_kwargs["json"]["imdisplayname"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_auth_self_recovery_on_refresh_failure():
+    """Verify that a rejected HTTP refresh automatically invokes browser-daemon recovery."""
+    mock_session = MagicMock()
+    # 400 invalid_grant response
+    resp_400 = AsyncMock()
+    resp_400.status = 400
+    resp_400.text = AsyncMock(return_value="AADSTS700084: The refresh token was issued to a SPA")
+    mock_session.post.return_value = AsyncMock(__aenter__=AsyncMock(return_value=resp_400))
+
+    auth = TeamsAuth(
+        session=mock_session,
+        refresh_token="expired_token",
+        browser_daemon_url="https://browser.example.com",
+    )
+
+    fake_recovered_auth = MagicMock()
+    fake_recovered_auth.refresh_token = "new_recovered_token"
+    fake_recovered_auth.tenant_id = "tenant-1"
+    fake_recovered_auth.client_id = "cid-1"
+    fake_recovered_auth.substrate_token = "sub_tok"
+    fake_recovered_auth.spaces_token = "spaces_tok"
+    fake_recovered_auth.csa_token = "csa_tok"
+    fake_recovered_auth.skype_token = "skype_tok"
+    fake_recovered_auth.tokens_expires_at = None
+    fake_recovered_auth.user_mri = "user-1"
+    fake_recovered_auth.user_display_name = "User One"
+    fake_recovered_auth.user_email = "user@example.com"
+
+    auth.async_from_browser_daemon = AsyncMock(return_value=fake_recovered_auth)
+
+    success = await auth.async_refresh_tokens()
+    assert success is True
+    assert auth.refresh_token == "new_recovered_token"
+    auth.async_from_browser_daemon.assert_awaited_once()

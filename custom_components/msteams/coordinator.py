@@ -119,21 +119,52 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Clear any previously registered auth issues
             ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
+            ir.async_delete_issue(
+                self.hass, "homeassistant", f"config_entry_reauth_{self.entry.entry_id}"
+            )
 
         except TeamsAuthError as err:
-            _LOGGER.error("Teams authentication failed: %s", err)
-            ir.async_create_issue(
-                self.hass,
-                DOMAIN,
-                f"auth_failed_{self.entry.entry_id}",
-                is_fixable=True,
-                is_persistent=True,
-                severity=ir.IssueSeverity.ERROR,
-                translation_key="auth_expired",
-                translation_placeholders={"name": self.entry.title},
-                data={"entry_id": self.entry.entry_id},
+            _LOGGER.warning(
+                "Teams authentication failed (%s), attempting automatic recovery via browser-daemon...",
+                err,
             )
-            raise ConfigEntryAuthFailed(err) from err
+            recovered = False
+            try:
+                recovered = await self.client.auth._async_recover_via_browser_daemon()
+            except Exception as rec_err:
+                _LOGGER.warning("Automatic recovery via browser-daemon raised error: %s", rec_err)
+
+            if recovered:
+                try:
+                    presence = await self.client.get_presence()
+                    now = datetime.now(UTC)
+                    meetings = await self.client.get_calendar_meetings(
+                        start_date=now - timedelta(minutes=30),
+                        end_date=now + timedelta(days=7),
+                        limit=15,
+                    )
+                    active_call, unread_count = await self.client.get_active_call_and_unread()
+                    ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
+                    ir.async_delete_issue(
+                        self.hass, "homeassistant", f"config_entry_reauth_{self.entry.entry_id}"
+                    )
+                except Exception as retry_err:
+                    _LOGGER.error("Data fetch failed after token recovery: %s", retry_err)
+                    raise UpdateFailed(f"Error communicating with Teams API: {retry_err}") from retry_err
+            else:
+                _LOGGER.error("Teams authentication failed and recovery unsuccessful: %s", err)
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    f"auth_failed_{self.entry.entry_id}",
+                    is_fixable=True,
+                    is_persistent=True,
+                    severity=ir.IssueSeverity.ERROR,
+                    translation_key="auth_expired",
+                    translation_placeholders={"name": self.entry.title},
+                    data={"entry_id": self.entry.entry_id},
+                )
+                raise ConfigEntryAuthFailed(err) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with Teams API: {err}") from err
 
