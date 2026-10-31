@@ -24,8 +24,8 @@ export function toSessionState(login) {
 }
 
 export async function loginViaBrowserDaemon(config) {
-  const python = process.env.TEAMS_AUTH_SHIM_PYTHON;
-  const shim = process.env.TEAMS_AUTH_SHIM_PATH;
+  const python = process.env.TEAMS_AUTH_SHIM_PYTHON || '@TEAMS_AUTH_PYTHON@';
+  const shim = process.env.TEAMS_AUTH_SHIM_PATH || '@TEAMS_AUTH_PATH@';
   if (!python || !shim) throw new Error('Teams authentication library is not configured');
   try {
     const { stdout } = await run(python, [shim], {
