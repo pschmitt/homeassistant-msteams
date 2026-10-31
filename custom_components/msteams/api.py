@@ -658,6 +658,26 @@ class TeamsApiClient:
                     names.append(name)
         return names
 
+    async def get_organizer(self, organizer_id: str | None) -> dict[str, Any]:
+        """Resolve a meeting organizer object ID to name, email and is_organizer."""
+        if not organizer_id:
+            return {}
+        mri = f"8:orgid:{organizer_id}"
+        if (self.auth.user_mri or "").lower() == mri.lower():
+            return {
+                "organizer_name": self.auth.user_display_name,
+                "organizer_email": self.auth.user_email or "",
+                "is_organizer": True,
+            }
+        if mri not in self._profile_cache:
+            await self._resolve_profiles([mri])
+        prof = self._profile_cache.get(mri, {})
+        return {
+            "organizer_name": prof.get("displayName"),
+            "organizer_email": prof.get("email") or prof.get("userPrincipalName") or "",
+            "is_organizer": False,
+        }
+
     async def _resolve_profiles(self, mris: list[str]) -> None:
         """Resolve user MRIs via MiddleTier fetchShortProfile."""
         url = f"{self.base_url}/api/mt/{self.region}/beta/users/fetchShortProfile?isMailAddress=false&enableGuest=true&skypeTeamsInfo=true"
@@ -725,6 +745,7 @@ class TeamsApiClient:
                                                 "meeting_code": meeting_data.get("meetingCode"),
                                                 "passcode": meeting_data.get("passcode"),
                                                 "i_cal_uid": live_state.get("iCalUid"),
+                                                "organizer_id": org_id,
                                             }
                                             break
                                     except Exception:

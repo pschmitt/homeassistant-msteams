@@ -305,6 +305,12 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "passcode": active_call.get("passcode"),
                     "is_online": True,
                 }
+                try:
+                    organizer = await self.client.get_organizer(active_call.get("organizer_id"))
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.debug("Organizer lookup failed: %s", err)
+                    organizer = {}
+                active_meeting.update({k: v for k, v in organizer.items() if v is not None})
         elif cal_active_meeting:
             active_meeting = cal_active_meeting
         elif is_in_meeting_by_presence:
