@@ -19,8 +19,8 @@ from .const import (
     CONF_POLL_INTERVAL,
     CONF_REFRESH_TOKEN,
     CONF_TENANT_ID,
-    CONF_USER_DISPLAY_NAME,
     CONF_USE_BROWSER_DAEMON,
+    CONF_USER_DISPLAY_NAME,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_PROFILE,
     DOMAIN,
@@ -118,14 +118,18 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema_dict[vol.Optional(CONF_USER_DISPLAY_NAME)] = str
         schema_dict[vol.Optional(CONF_DEFAULT_CONVERSATION_ID)] = str
 
-        return self.async_show_form(step_id="user", data_schema=vol.Schema(schema_dict), errors=errors)
+        return self.async_show_form(
+            step_id="user", data_schema=vol.Schema(schema_dict), errors=errors
+        )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
         """Handle reauthorization initiated by repairs or expired tokens."""
         self.reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_reauth_confirm()
 
-    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Confirm reauthorization."""
         errors: dict[str, str] = {}
         has_browser_daemon = "browser_daemon" in self.hass.config.components or bool(

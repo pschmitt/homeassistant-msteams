@@ -103,7 +103,7 @@ def test_coordinator_token_persistence():
     auth = MagicMock()
     client.auth = auth
 
-    coordinator = TeamsDataUpdateCoordinator(hass, entry, client)
+    TeamsDataUpdateCoordinator(hass, entry, client)
 
     assert auth.on_tokens_refreshed is not None
     auth.on_tokens_refreshed({"refresh_token": "new_rotated_token"})

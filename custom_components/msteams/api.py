@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from collections.abc import Callable
 import json
 import logging
 import os
 import random
 import re
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -302,21 +302,14 @@ class TeamsAuth:
                         tenant_id = entry.get("realm")
                     if entry.get("secret"):
                         id_payload = _decode_jwt_payload(entry["secret"])
-                        user_display_name = (
-                            id_payload.get("name")
-                            or user_display_name
-                        )
+                        user_display_name = id_payload.get("name") or user_display_name
                         user_email = (
                             id_payload.get("preferred_username")
                             or id_payload.get("upn")
                             or id_payload.get("email")
                             or user_email
                         )
-                        user_mri = (
-                            id_payload.get("oid")
-                            or id_payload.get("sub")
-                            or user_mri
-                        )
+                        user_mri = id_payload.get("oid") or id_payload.get("sub") or user_mri
                         if not tenant_id and id_payload.get("tid"):
                             tenant_id = id_payload.get("tid")
                 elif cred_type == "AccessToken" and not tenant_id and entry.get("realm"):
@@ -410,7 +403,9 @@ class TeamsAuth:
                 created_session_id = session_info["id"]
                 session_id = created_session_id
             except Exception as err:
-                raise TeamsAuthError(f"Failed to start browser-daemon session for profile '{profile}': {err}") from err
+                raise TeamsAuthError(
+                    f"Failed to start browser-daemon session for profile '{profile}': {err}"
+                ) from err
 
         tab_id: str | None = None
         opened_new_tab = False
@@ -444,7 +439,9 @@ class TeamsAuth:
         except TeamsAuthError:
             raise
         except Exception as err:
-            raise TeamsAuthError(f"Failed to extract Teams auth from browser-daemon: {err}") from err
+            raise TeamsAuthError(
+                f"Failed to extract Teams auth from browser-daemon: {err}"
+            ) from err
         finally:
             if created_session_id:
                 try:

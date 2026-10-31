@@ -77,9 +77,7 @@ class TeamsAuthRepairFlow(RepairsFlow):
             {
                 vol.Required(
                     CONF_BROWSER_DAEMON_URL,
-                    default=entry.data.get(
-                        CONF_BROWSER_DAEMON_URL, DEFAULT_BROWSER_DAEMON_URL
-                    ),
+                    default=entry.data.get(CONF_BROWSER_DAEMON_URL, DEFAULT_BROWSER_DAEMON_URL),
                 ): str,
                 vol.Optional(
                     CONF_BROWSER_DAEMON_PROFILE,

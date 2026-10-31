@@ -1,11 +1,11 @@
 {
   "domain": "msteams",
   "name": "Microsoft Teams",
-  "codeowners": [
-    "@pschmitt"
-  ],
   "after_dependencies": [
     "browser_daemon"
+  ],
+  "codeowners": [
+    "@pschmitt"
   ],
   "config_flow": true,
   "documentation": "https://github.com/pschmitt/homeassistant-msteams",
