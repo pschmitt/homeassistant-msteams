@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import quote
 
 import aiohttp
+from browser_daemon_client import BrowserDaemon
 
 from .browser_auth import BrowserAuthError, acquire_browser_auth
 from .const import (
@@ -442,27 +443,19 @@ class TeamsAuth:
         hass: Any | None = None,
     ) -> TeamsAuth:
         """Acquire credentials automatically via browser-daemon."""
-        bd_client = None
+        url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
         if hass is not None:
+            # Reuse the URL and secret of the browser_daemon integration, if set up.
             try:
                 from custom_components.browser_daemon import async_get_client
 
-                bd_client = async_get_client(hass)
+                hass_client = async_get_client(hass)
+                url = getattr(hass_client, "base_url", None) or url
+                secret = getattr(hass_client, "cluster_secret", None) or secret
             except Exception as err:
                 _LOGGER.debug("Could not get browser-daemon client from hass: %s", err)
 
-        if bd_client is None:
-            try:
-                from custom_components.browser_daemon.api import BrowserDaemonClient
-            except ImportError as err:
-                raise TeamsAuthError("browser_daemon integration not available") from err
-
-            url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
-            bd_client = BrowserDaemonClient(
-                session=session,
-                base_url=url,
-                cluster_secret=secret,
-            )
+        bd_client = BrowserDaemon(session, url, secret, client="Home Assistant · Teams")
 
         try:
             _, creds = await acquire_browser_auth(bd_client, profile, cls.parse_credentials)
