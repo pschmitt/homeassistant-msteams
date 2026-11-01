@@ -201,6 +201,7 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
     import json
 
     refresh_token = None
+    refresh_expires = None
     valid_substrate = False
     for value in (data.get("local_storage") or {}).values():
         try:
@@ -211,6 +212,7 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
                 and entry.get("clientId")
             ):
                 refresh_token = entry["secret"]
+                refresh_expires = entry.get("expiresOn")
             if "SubstrateSearch" in entry.get("target", ""):
                 token = entry.get("secret", "")
                 if not token.startswith("ey"):
@@ -224,6 +226,14 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
             continue
     if not refresh_token or not valid_substrate:
         raise BrowserAuthError("Teams session is not ready")
+    # A SPA refresh token lives 24h from the interactive sign-in and cannot be extended. A
+    # freshly opened Teams page still holds the stale one until it has signed in silently, so
+    # keep polling until MSAL has stored a renewed token.
+    try:
+        if refresh_expires is not None and float(refresh_expires) < time.time() + 3600:
+            raise BrowserAuthError("Teams refresh token is (almost) expired; waiting for renewal")
+    except (TypeError, ValueError):
+        pass
     return {"refresh_token": refresh_token}
 
 

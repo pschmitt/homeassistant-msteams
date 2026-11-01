@@ -47,28 +47,6 @@
       }
     }
   },
-  "issues": {
-    "auth_expired": {
-      "title": "Teams-Authentifizierung abgelaufen",
-      "fix_flow": {
-        "step": {
-          "reauth": {
-            "title": "Teams neu authentifizieren",
-            "description": "Geben Sie eine neue Anmeldedatei oder ein Refresh-Token an.",
-            "data": {
-              "credentials_file": "Pfad zur Anmeldedatei",
-              "refresh_token": "OAuth-Refresh-Token",
-              "tenant_id": "Mandanten-ID"
-            }
-          }
-        },
-        "error": {
-          "auth_failed": "Fehler beim Authentifizieren oder Auslesen der Token.",
-          "cannot_connect": "Microsoft Teams Endpunkt nicht erreichbar."
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "presence": {

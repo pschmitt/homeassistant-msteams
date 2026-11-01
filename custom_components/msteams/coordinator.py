@@ -219,17 +219,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ) from retry_err
             else:
                 _LOGGER.error("Teams authentication failed and recovery unsuccessful: %s", err)
-                ir.async_create_issue(
-                    self.hass,
-                    DOMAIN,
-                    f"auth_failed_{self.entry.entry_id}",
-                    is_fixable=True,
-                    is_persistent=True,
-                    severity=ir.IssueSeverity.ERROR,
-                    translation_key="auth_expired",
-                    translation_placeholders={"name": self.entry.title},
-                    data={"entry_id": self.entry.entry_id},
-                )
+                # ConfigEntryAuthFailed makes core raise the one reauth repair.
                 raise ConfigEntryAuthFailed(err) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with Teams API: {err}") from err

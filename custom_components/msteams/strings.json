@@ -47,28 +47,6 @@
       }
     }
   },
-  "issues": {
-    "auth_expired": {
-      "title": "Teams authentication expired",
-      "fix_flow": {
-        "step": {
-          "reauth": {
-            "title": "Re-authenticate Teams",
-            "description": "Provide a new credentials file or refresh token.",
-            "data": {
-              "credentials_file": "Credentials file path",
-              "refresh_token": "OAuth refresh token",
-              "tenant_id": "Tenant ID"
-            }
-          }
-        },
-        "error": {
-          "auth_failed": "Failed to authenticate or extract session tokens.",
-          "cannot_connect": "Could not reach Microsoft Teams endpoint."
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "presence": {
