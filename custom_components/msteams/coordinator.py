@@ -9,7 +9,6 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -219,8 +218,19 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ) from retry_err
             else:
                 _LOGGER.error("Teams authentication failed and recovery unsuccessful: %s", err)
-                # ConfigEntryAuthFailed makes core raise the one reauth repair.
-                raise ConfigEntryAuthFailed(err) from err
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    f"auth_failed_{self.entry.entry_id}",
+                    is_fixable=True,
+                    is_persistent=True,
+                    severity=ir.IssueSeverity.ERROR,
+                    translation_key="auth_expired",
+                    translation_placeholders={"name": self.entry.title},
+                    data={"entry_id": self.entry.entry_id},
+                )
+                # Not ConfigEntryAuthFailed: that would add core's own reauth repair next to ours.
+                raise UpdateFailed(f"Teams authentication expired: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with Teams API: {err}") from err
 

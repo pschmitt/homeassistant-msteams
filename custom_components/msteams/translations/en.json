@@ -47,6 +47,28 @@
       }
     }
   },
+  "issues": {
+    "auth_expired": {
+      "title": "Teams authentication expired",
+      "fix_flow": {
+        "step": {
+          "reauth": {
+            "title": "Sign in to Teams again",
+            "description": "Renews the sign-in through the browser-daemon profile, which must be signed in to Teams.",
+            "data": {
+              "browser_daemon_url": "Browser daemon URL",
+              "browser_daemon_profile": "Browser profile",
+              "browser_daemon_secret": "Cluster secret"
+            }
+          }
+        },
+        "error": {
+          "auth_failed": "Failed to authenticate or extract session tokens.",
+          "cannot_connect": "Could not reach Microsoft Teams endpoint."
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "presence": {

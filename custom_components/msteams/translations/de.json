@@ -47,6 +47,28 @@
       }
     }
   },
+  "issues": {
+    "auth_expired": {
+      "title": "Teams-Authentifizierung abgelaufen",
+      "fix_flow": {
+        "step": {
+          "reauth": {
+            "title": "Teams neu anmelden",
+            "description": "Die Anmeldung wird über das Browser-Daemon-Profil erneuert (dort muss Teams angemeldet sein).",
+            "data": {
+              "browser_daemon_url": "Browser daemon URL",
+              "browser_daemon_profile": "Browser profile",
+              "browser_daemon_secret": "Cluster secret"
+            }
+          }
+        },
+        "error": {
+          "auth_failed": "Fehler beim Authentifizieren oder Auslesen der Token.",
+          "cannot_connect": "Microsoft Teams Endpunkt nicht erreichbar."
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "presence": {
