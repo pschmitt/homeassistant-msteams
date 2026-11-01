@@ -7,6 +7,7 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -36,6 +37,7 @@ class TeamsRefreshTokenButton(TeamsEntity, ButtonEntity):
 
     _attr_translation_key = "refresh_tokens"
     _attr_icon = "mdi:key-change"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
         super().__init__(coordinator, "refresh_tokens")
