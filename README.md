@@ -14,7 +14,6 @@ Modern Microsoft Teams custom component for Home Assistant powered by Microsoft 
   - `sensor.msteams_unread_chats`: Unread chat conversations count.
 - **Binary Sensors**:
   - `binary_sensor.msteams_in_a_meeting`: Indicates whether you are currently attending a meeting (from calendar schedule and real-time browser session).
-  - `binary_sensor.msteams_meeting_muted`: Live microphone mute status in the active Teams web session.
   - `binary_sensor.msteams_connected`: Real-time API connection and token status.
 - **Events**:
   - `event.msteams_meeting_event`: Lifecycle events (`meeting_started`, `meeting_ended`, `meeting_reminder`) include the meeting ID, title, join URL, description, start/end times, organizer, location, and participants when available. The ended event retains the last known meeting details.
@@ -22,12 +21,10 @@ Modern Microsoft Teams custom component for Home Assistant powered by Microsoft 
   - `notify.msteams`: Sends Markdown notifications to the configured default conversation, or your Teams notes if no default is set. Use `msteams.send_message` to select a conversation per message.
 - **Buttons**:
   - `button.msteams_refresh_tokens`: Force immediate token refresh.
-  - `button.msteams_toggle_mute`: Instantly toggle microphone mute in your active meeting via `browser-daemon`.
 - **Services**:
   - `msteams.send_message`: Send messages to chats or channel threads.
   - `msteams.reply_message`: Threaded replies to existing messages.
   - `msteams.add_reaction`: React to messages with emojis (like, heart, laugh, surprised, sad, angry).
-  - `msteams.toggle_mute` & `msteams.set_mute`: Direct meeting microphone controls.
 - **Repairs**:
   - Interactive repair flow in Home Assistant when session credentials expire or reauthorization is needed.
 
@@ -36,14 +33,13 @@ Modern Microsoft Teams custom component for Home Assistant powered by Microsoft 
 ```mermaid
 flowchart LR
     HA[Home Assistant] -->|Direct HTTP / Token Refresh| Azure[Azure AD & Teams Private APIs]
-    HA -->|Mesh API & CDP| BD[browser-daemon]
-    BD -->|Session Storage Export / CDP| TeamsWeb[Microsoft Teams Web]
+    HA -->|Session Storage Export| BD[browser-daemon]
+    BD -->|Signed-in profile| TeamsWeb[Microsoft Teams Web]
 ```
 
 1. **Initial Authentication**: Credentials and MSAL refresh tokens are extracted directly from a signed-in `browser-daemon` profile (e.g. `work`).
 2. **Token Lifecycle**: Access tokens are refreshed via fast, direct HTTP requests to Azure AD without opening browser windows.
 3. **Live updates**: An independent Teams push connection triggers refreshes for chat and call events. Periodic polling remains enabled for presence, calendar changes, and missed events.
-4. **Meeting Controls**: Active meeting detection and microphone mute toggling are executed via `browser-daemon` and Chrome DevTools Protocol against the running Teams page.
 
 ## Installation
 
