@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 # Stub homeassistant modules if homeassistant is not installed in test runner
 if "homeassistant" not in sys.modules:
     ha = types.ModuleType("homeassistant")
+    ha.__path__ = []
     sys.modules["homeassistant"] = ha
 
     # const
@@ -104,8 +105,30 @@ if "homeassistant" not in sys.modules:
 
     # helpers
     helpers = types.ModuleType("homeassistant.helpers")
+    helpers.__path__ = []
     sys.modules["homeassistant.helpers"] = helpers
     ha.helpers = helpers
+
+    # helpers.entity
+    import enum
+
+    entity_mod = types.ModuleType("homeassistant.helpers.entity")
+
+    class EntityCategory(enum.StrEnum):
+        CONFIG = "config"
+        DIAGNOSTIC = "diagnostic"
+
+    class Entity:
+        _attr_entity_category = None
+
+        @property
+        def entity_category(self):
+            return getattr(self, "_attr_entity_category", None)
+
+    entity_mod.EntityCategory = EntityCategory
+    entity_mod.Entity = Entity
+    sys.modules["homeassistant.helpers.entity"] = entity_mod
+    helpers.entity = entity_mod
 
     # helpers.update_coordinator
     import typing
@@ -134,7 +157,7 @@ if "homeassistant" not in sys.modules:
         async def async_refresh(self):
             pass
 
-    class CoordinatorEntity[T]:
+    class CoordinatorEntity[T](Entity):
         def __init__(self, coordinator):
             self.coordinator = coordinator
 
@@ -168,17 +191,6 @@ if "homeassistant" not in sys.modules:
     device_registry.DeviceInfo = DeviceInfo
     sys.modules["homeassistant.helpers.device_registry"] = device_registry
     helpers.device_registry = device_registry
-
-    # helpers.entity
-    entity_mod = types.ModuleType("homeassistant.helpers.entity")
-
-    class EntityCategory:
-        CONFIG = "config"
-        DIAGNOSTIC = "diagnostic"
-
-    entity_mod.EntityCategory = EntityCategory
-    sys.modules["homeassistant.helpers.entity"] = entity_mod
-    helpers.entity = entity_mod
 
     # helpers.entity_platform
     entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
@@ -216,6 +228,7 @@ if "homeassistant" not in sys.modules:
 
     # components
     components = types.ModuleType("homeassistant.components")
+    components.__path__ = []
     sys.modules["homeassistant.components"] = components
     ha.components = components
 
