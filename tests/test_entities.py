@@ -15,7 +15,6 @@ from custom_components.msteams.button import (
 )
 from custom_components.msteams.notify import TeamsNotifyEntity
 from custom_components.msteams.sensor import (
-    TeamsActiveMeetingSensor,
     TeamsNextMeetingSensor,
     TeamsPresenceSensor,
     TeamsUnreadChatsSensor,
@@ -49,9 +48,6 @@ def mock_coordinator():
             "organizer_name": "Bob",
             "join_url": "https://teams.microsoft.com/meet/xyz",
         },
-        "active_meeting": {
-            "subject": "Daily Standup",
-        },
         "in_a_meeting": True,
         "meeting_title": "Daily Standup",
         "meeting_url": "https://teams.microsoft.com/meet/standup",
@@ -63,7 +59,7 @@ def mock_coordinator():
 
 
 def test_sensors(mock_coordinator):
-    """Test presence, next meeting, active meeting, and unread chats sensors."""
+    """Test presence, next meeting, and unread chats sensors."""
     presence_sensor = TeamsPresenceSensor(mock_coordinator)
     assert presence_sensor.native_value == "Available"
     assert presence_sensor.extra_state_attributes["status_message"] == "Working from home"
@@ -71,10 +67,6 @@ def test_sensors(mock_coordinator):
     next_meeting_sensor = TeamsNextMeetingSensor(mock_coordinator)
     assert next_meeting_sensor.native_value == "Sprint Planning"
     assert next_meeting_sensor.extra_state_attributes["organizer"] == "Bob"
-
-    active_meeting_sensor = TeamsActiveMeetingSensor(mock_coordinator)
-    assert active_meeting_sensor.native_value == "Daily Standup"
-    assert active_meeting_sensor.extra_state_attributes["in_meeting"] is True
 
     unread_sensor = TeamsUnreadChatsSensor(mock_coordinator)
     assert unread_sensor.native_value == 5
@@ -88,6 +80,7 @@ def test_binary_sensors(mock_coordinator):
 
     connected = TeamsConnectedBinarySensor(mock_coordinator)
     assert connected.is_on is True
+    assert connected.entity_category.value == "diagnostic"
 
 
 @pytest.mark.asyncio

@@ -10,11 +10,10 @@ Modern Microsoft Teams custom component for Home Assistant powered by Microsoft 
 - **Sensors**:
   - `sensor.msteams_presence`: Current user presence (Available, Busy, In a meeting, Away, etc.) and custom status message.
   - `sensor.msteams_next_meeting`: Upcoming calendar meeting title, start/end time, organizer, and join URL.
-  - `sensor.msteams_active_meeting`: Currently active meeting title and join link.
   - `sensor.msteams_unread_chats`: Unread chat conversations count.
 - **Binary Sensors**:
   - `binary_sensor.msteams_in_a_meeting`: Indicates whether you are currently attending a meeting (from calendar schedule and real-time browser session).
-  - `binary_sensor.msteams_connected`: Real-time API connection and token status.
+  - `binary_sensor.msteams_connected`: Diagnostic entity for real-time API connection and token status.
 - **Events**:
   - `event.msteams_meeting_event`: Lifecycle events (`meeting_started`, `meeting_ended`, `meeting_reminder`) include the meeting ID, title, join URL, description, start/end times, organizer, location, and participants when available. The ended event retains the last known meeting details.
 - **Notifications**:

@@ -26,7 +26,6 @@ async def async_setup_entry(
         [
             TeamsPresenceSensor(coordinator),
             TeamsNextMeetingSensor(coordinator),
-            TeamsActiveMeetingSensor(coordinator),
             TeamsUnreadChatsSensor(coordinator),
         ]
     )
@@ -94,51 +93,6 @@ class TeamsNextMeetingSensor(TeamsEntity, SensorEntity):
             "is_online": next_m.get("is_online"),
             "join_url": next_m.get("join_url"),
             "my_response": next_m.get("my_response"),
-        }
-
-
-class TeamsActiveMeetingSensor(TeamsEntity, SensorEntity):
-    """Sensor representing the current active meeting title and URL."""
-
-    _attr_translation_key = "active_meeting"
-    _attr_icon = "mdi:video-account"
-
-    def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
-        super().__init__(coordinator, "active_meeting")
-
-    @property
-    def native_value(self) -> str | None:
-        """Return current meeting title or None."""
-        data = self.coordinator.data or {}
-        if data.get("in_a_meeting"):
-            return data.get("meeting_title") or "Active Meeting"
-        return "None"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return active meeting attributes."""
-        data = self.coordinator.data or {}
-        title = data.get("meeting_title")
-        url = data.get("meeting_url")
-        act_m = data.get("active_meeting") or {}
-        return {
-            "in_meeting": data.get("in_a_meeting", False),
-            "meeting_title": title,
-            "meeting_name": title,
-            "title": title,
-            "meeting_url": url,
-            "url": url,
-            "join_url": url,
-            "active_calendar_meeting": act_m.get("subject"),
-            "description": act_m.get("description", ""),
-            "participants": act_m.get("participants", []),
-            "participants_count": act_m.get("participants_count", 0),
-            "organizer": act_m.get("organizer_name"),
-            "organizer_email": act_m.get("organizer_email"),
-            "is_organizer": act_m.get("is_organizer", False),
-            "location": act_m.get("location"),
-            "start_time": act_m.get("start_time"),
-            "end_time": act_m.get("end_time"),
         }
 
 

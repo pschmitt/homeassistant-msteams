@@ -77,9 +77,6 @@
       "next_meeting": {
         "name": "Next meeting"
       },
-      "active_meeting": {
-        "name": "Active meeting"
-      },
       "unread_chats": {
         "name": "Unread chats"
       }
