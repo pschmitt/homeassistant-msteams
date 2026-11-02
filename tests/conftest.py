@@ -169,6 +169,17 @@ if "homeassistant" not in sys.modules:
     sys.modules["homeassistant.helpers.device_registry"] = device_registry
     helpers.device_registry = device_registry
 
+    # helpers.entity
+    entity_mod = types.ModuleType("homeassistant.helpers.entity")
+
+    class EntityCategory:
+        CONFIG = "config"
+        DIAGNOSTIC = "diagnostic"
+
+    entity_mod.EntityCategory = EntityCategory
+    sys.modules["homeassistant.helpers.entity"] = entity_mod
+    helpers.entity = entity_mod
+
     # helpers.entity_platform
     entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
     entity_platform.AddEntitiesCallback = MagicMock

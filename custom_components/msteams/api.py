@@ -784,12 +784,19 @@ class TeamsApiClient:
         payload = {
             "content": html_content,
             "messagetype": "RichText/Html",
-            "contenttype": "text",
+            "contenttype": "Text",
             "clientmessageid": _generate_client_message_id(),
             "imdisplayname": self.auth.user_display_name,
+            "properties": {
+                "formatVariant": "TEAMS",
+                "cards": "[]",
+                "links": "[]",
+                "files": "[]",
+                "mentions": "[]",
+            },
         }
         if subject:
-            payload["properties"] = {"subject": subject}
+            payload["properties"]["subject"] = subject
 
         async with self.auth.session.post(
             url,

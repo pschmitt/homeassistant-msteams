@@ -197,7 +197,15 @@ async def test_api_send_message():
     assert res["id"] == "msg987"
     call_kwargs = mock_session.post.call_args.kwargs
     assert "<strong>world</strong>" in call_kwargs["json"]["content"]
+    assert call_kwargs["json"]["contenttype"] == "Text"
     assert call_kwargs["json"]["imdisplayname"] == "Alice"
+    assert call_kwargs["json"]["properties"] == {
+        "formatVariant": "TEAMS",
+        "cards": "[]",
+        "links": "[]",
+        "files": "[]",
+        "mentions": "[]",
+    }
 
 
 @pytest.mark.asyncio
@@ -248,4 +256,11 @@ async def test_send_message_places_channel_subject_in_properties():
     client = TeamsApiClient(auth)
     client._ensure_auth = AsyncMock()
     await client.send_message("channel@thread.tacv2", "Body", subject="Title")
-    assert session.post.call_args.kwargs["json"]["properties"] == {"subject": "Title"}
+    assert session.post.call_args.kwargs["json"]["properties"] == {
+        "formatVariant": "TEAMS",
+        "cards": "[]",
+        "links": "[]",
+        "files": "[]",
+        "mentions": "[]",
+        "subject": "Title",
+    }

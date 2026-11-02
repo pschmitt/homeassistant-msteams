@@ -198,11 +198,11 @@ class TeamsTrouter:
                     "appId": app,
                     "aesKey": "",
                     "languageId": "en-US",
-                    "platform": "edge",
+                    "platform": "linux",
                     "templateKey": template,
                     "platformUIVersion": _VERSION,
                 },
-                "registrationId": epid if app == "TeamsCDLWebWorker" else str(uuid.uuid4()),
+                "registrationId": str(uuid.uuid4()),
                 "nodeId": "",
                 "transports": {
                     "TROUTER": [{"context": "", "path": info["surl"] + suffix, "ttl": 86400}]
