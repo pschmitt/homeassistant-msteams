@@ -7,6 +7,9 @@
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
           "browser_daemon_profile": "Browser Daemon Profile",
+          "rbw_entry_id": "rbw integration",
+          "rbw_item_id": "rbw Microsoft account item ID",
+          "prefer_passkey": "Prefer rbw passkey sign-in",
           "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
           "refresh_token": "OAuth refresh token",
           "tenant_id": "Tenant ID",
@@ -20,6 +23,23 @@
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
           "browser_daemon_profile": "Browser Daemon Profile",
+          "rbw_entry_id": "rbw integration",
+          "rbw_item_id": "rbw Microsoft account item ID",
+          "prefer_passkey": "Prefer rbw passkey sign-in",
+          "credentials_file": "Credentials file path",
+          "refresh_token": "OAuth refresh token",
+          "tenant_id": "Tenant ID"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Microsoft Teams",
+        "description": "Update the authentication settings for this Teams account. Sign in again to save the changes.",
+        "data": {
+          "use_browser_daemon": "Import authentication from Browser Daemon",
+          "browser_daemon_profile": "Browser Daemon Profile",
+          "rbw_entry_id": "rbw integration",
+          "rbw_item_id": "rbw Microsoft account item ID",
+          "prefer_passkey": "Prefer rbw passkey sign-in",
           "credentials_file": "Credentials file path",
           "refresh_token": "OAuth refresh token",
           "tenant_id": "Tenant ID"
@@ -27,21 +47,30 @@
       }
     },
     "error": {
+      "rbw_incomplete": "Select both an rbw integration and an account item ID, or leave both empty.",
       "missing_credentials": "Please select Browser Daemon import, or provide a credentials file or refresh token.",
       "auth_failed": "Authentication failed or token invalid.",
       "cannot_connect": "Could not connect to Microsoft Teams endpoint."
     },
     "abort": {
       "already_configured": "This Microsoft Teams account is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Microsoft Teams was reconfigured successfully."
     }
   },
   "options": {
+    "error": {
+      "rbw_incomplete": "Select both an rbw integration and an account item ID, or leave both empty."
+    },
     "step": {
       "init": {
         "title": "Microsoft Teams Options",
         "data": {
           "poll_interval": "Update interval (seconds)",
+          "enable_push": "Enable real-time push updates",
+          "rbw_entry_id": "rbw integration",
+          "rbw_item_id": "rbw Microsoft account item ID",
+          "prefer_passkey": "Prefer rbw passkey sign-in",
           "default_conversation_id": "Default Conversation ID for notifications"
         }
       }
@@ -54,7 +83,7 @@
         "step": {
           "reauth": {
             "title": "Sign in to Teams again",
-            "description": "Renews the sign-in through the browser-daemon profile, which must be signed in to Teams.",
+            "description": "Retries sign-in through the configured browser-daemon profile and rbw account. If Microsoft requires MFA, consent, a password change or another interactive step, open that profile in the browser-daemon dashboard, complete the step, then retry here. The pending login page is kept for 15 minutes.",
             "data": {
               "browser_daemon_url": "Browser daemon URL",
               "browser_daemon_profile": "Browser profile",

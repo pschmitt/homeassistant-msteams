@@ -16,9 +16,9 @@ from typing import Any
 from urllib.parse import quote
 
 import aiohttp
-from browser_daemon_client import BrowserDaemon
 
 from .browser_auth import BrowserAuthError, acquire_browser_auth
+from .browser_login import TeamsBrowserDaemon, async_login
 from .const import (
     AUTHSVC_ENDPOINT,
     DEFAULT_BROWSER_DAEMON_URL,
@@ -34,6 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 
 CLIENT_VERSION_HEADER = "1415/1.0.0.2025010401"
 MIDDLETIER_VERSION_HEADER = "49/25113001312"
+_UUID_MRI_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
 
 
 class TeamsAuthError(Exception):
@@ -53,9 +56,27 @@ def _decode_jwt_payload(token: str) -> dict[str, Any]:
         padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
         decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
         return json.loads(decoded)
-    except Exception as err:
-        _LOGGER.debug("Could not decode JWT payload: %s", err)
+    except Exception:
+        _LOGGER.debug("Could not decode JWT payload")
         return {}
+
+
+def _same_user_mri(left: str | None, right: str | None) -> bool:
+    """Compare Teams MRIs, including MSAL's bare Entra object-ID form."""
+
+    def normalize(value: str | None) -> str | None:
+        if value is None:
+            return None
+        object_id = value
+        for prefix in ("8:orgid:", "orgid:"):
+            if value.startswith(prefix):
+                object_id = value[len(prefix) :]
+                break
+        if _UUID_MRI_RE.fullmatch(object_id):
+            return object_id.lower()
+        return value
+
+    return normalize(left) == normalize(right)
 
 
 def _generate_client_message_id() -> str:
@@ -129,6 +150,9 @@ class TeamsAuth:
         browser_daemon_url: str | None = None,
         browser_daemon_profile: str = DEFAULT_PROFILE,
         browser_daemon_secret: str | None = None,
+        rbw_entry_id: str | None = None,
+        rbw_item_id: str | None = None,
+        prefer_passkey: bool = True,
     ) -> None:
         self.session = session
         self.refresh_token = refresh_token
@@ -143,6 +167,10 @@ class TeamsAuth:
         self.browser_daemon_profile = browser_daemon_profile
         self.browser_daemon_secret = browser_daemon_secret
         self._is_recovering = False
+        self.rbw_entry_id = rbw_entry_id
+        self.rbw_item_id = rbw_item_id
+        self.prefer_passkey = prefer_passkey
+        self._browser_retry_at = 0.0
 
         self.substrate_token: str | None = None
         self.spaces_token: str | None = None
@@ -172,7 +200,7 @@ class TeamsAuth:
 
     async def _async_recover_via_browser_daemon(self) -> bool:
         """Attempt to restore authentication state via browser-daemon."""
-        if self._is_recovering:
+        if self._is_recovering or time.monotonic() < self._browser_retry_at:
             return False
         if not self.hass and not self.browser_daemon_url:
             return False
@@ -185,7 +213,12 @@ class TeamsAuth:
                 profile=self.browser_daemon_profile,
                 secret=self.browser_daemon_secret,
                 hass=self.hass,
+                rbw_entry_id=self.rbw_entry_id,
+                rbw_item_id=self.rbw_item_id,
+                prefer_passkey=self.prefer_passkey,
             )
+            if self.user_mri and not _same_user_mri(new_auth.user_mri, self.user_mri):
+                raise TeamsAuthError("Browser authentication belongs to a different Teams account")
             self.refresh_token = new_auth.refresh_token
             self.tenant_id = new_auth.tenant_id
             self.client_id = new_auth.client_id
@@ -206,16 +239,16 @@ class TeamsAuth:
                     res = self.on_tokens_refreshed(self.export_data())
                     if asyncio.iscoroutine(res):
                         await res
-                except Exception as err:
-                    _LOGGER.warning("Error in on_tokens_refreshed callback: %s", err)
+                except Exception:
+                    _LOGGER.warning("Error in on_tokens_refreshed callback")
 
-            _LOGGER.info(
-                "Successfully recovered Teams authentication via browser-daemon for %s",
-                self.user_display_name,
-            )
+            _LOGGER.info("Successfully recovered Teams authentication via browser-daemon")
             return True
-        except Exception as err:
-            _LOGGER.warning("Could not recover Teams authentication via browser-daemon: %s", err)
+        except Exception:
+            self._browser_retry_at = time.monotonic() + 300
+            _LOGGER.warning(
+                "Teams browser recovery unsuccessful; check the configured profile and authentication repair"
+            )
             return False
         finally:
             self._is_recovering = False
@@ -254,14 +287,11 @@ class TeamsAuth:
                     token_url, data=data, headers=headers, timeout=15
                 ) as resp:
                     if resp.status != 200:
-                        err_text = await resp.text()
-                        _LOGGER.warning(
-                            "Token refresh failed for %s (%s): %s", key, resp.status, err_text
-                        )
+                        _LOGGER.warning("Token refresh failed for %s (HTTP %s)", key, resp.status)
                         if resp.status in (400, 401):
                             if await self._async_recover_via_browser_daemon():
                                 return True
-                            raise TeamsAuthError(f"OAuth token refresh rejected: {err_text}")
+                            raise TeamsAuthError("OAuth token refresh rejected")
                         continue
                     payload = await resp.json()
                     new_tokens[key] = payload.get("access_token")
@@ -269,8 +299,8 @@ class TeamsAuth:
                         current_refresh_token = payload["refresh_token"]
                     if "expires_in" in payload:
                         expires_in_seconds = min(expires_in_seconds, int(payload["expires_in"]))
-            except aiohttp.ClientError as err:
-                raise TeamsAuthError(f"Network error refreshing tokens: {err}") from err
+            except aiohttp.ClientError:
+                raise TeamsAuthError("Network error refreshing tokens") from None
 
         if not new_tokens.get("spaces"):
             if await self._async_recover_via_browser_daemon():
@@ -293,15 +323,15 @@ class TeamsAuth:
             if not self.user_email:
                 self.user_email = jwt.get("upn") or jwt.get("email")
 
-        _LOGGER.info("Successfully refreshed Microsoft Teams tokens for %s", self.user_display_name)
+        _LOGGER.info("Successfully refreshed Microsoft Teams tokens")
 
         if self.on_tokens_refreshed:
             try:
                 res = self.on_tokens_refreshed(self.export_data())
                 if asyncio.iscoroutine(res):
                     await res
-            except Exception as err:
-                _LOGGER.warning("Error in on_tokens_refreshed callback: %s", err)
+            except Exception:
+                _LOGGER.warning("Error in on_tokens_refreshed callback")
 
         return True
 
@@ -316,14 +346,13 @@ class TeamsAuth:
                 AUTHSVC_ENDPOINT, headers=headers, json={}, timeout=15
             ) as resp:
                 if resp.status != 200:
-                    text = await resp.text()
-                    raise TeamsAuthError(f"Skype token exchange failed ({resp.status}): {text}")
+                    raise TeamsAuthError(f"Skype token exchange failed (HTTP {resp.status})")
                 data = await resp.json()
                 self.skype_token = data.get("tokens", {}).get("skypeToken")
                 if not self.skype_token:
                     raise TeamsAuthError("Skype token exchange did not return skypeToken")
-        except aiohttp.ClientError as err:
-            raise TeamsAuthError(f"Network error exchanging Skype token: {err}") from err
+        except aiohttp.ClientError:
+            raise TeamsAuthError("Network error exchanging Skype token") from None
 
     @classmethod
     def parse_credentials(cls, content_or_path: str | dict[str, Any]) -> dict[str, Any]:
@@ -441,6 +470,9 @@ class TeamsAuth:
         profile: str = DEFAULT_PROFILE,
         secret: str | None = None,
         hass: Any | None = None,
+        rbw_entry_id: str | None = None,
+        rbw_item_id: str | None = None,
+        prefer_passkey: bool = True,
     ) -> TeamsAuth:
         """Acquire credentials automatically via browser-daemon."""
         url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
@@ -452,31 +484,81 @@ class TeamsAuth:
                 hass_client = async_get_client(hass)
                 url = getattr(hass_client, "base_url", None) or url
                 secret = getattr(hass_client, "cluster_secret", None) or secret
-            except Exception as err:
-                _LOGGER.debug("Could not get browser-daemon client from hass: %s", err)
+            except Exception:
+                _LOGGER.debug("Could not get browser-daemon client from Home Assistant")
 
-        bd_client = BrowserDaemon(session, url, secret, client="Home Assistant · Teams")
+        bd_client = TeamsBrowserDaemon(session, url, secret, client="Home Assistant · Teams")
+        expected_username = None
+        verified_auth: TeamsAuth | None = None
+
+        async def login(session_id: str, tab_id: str, node: str | None) -> str:
+            nonlocal expected_username
+            outcome, expected_username = await async_login(
+                hass,
+                bd_client,
+                session_id,
+                tab_id,
+                node,
+                rbw_entry_id,
+                rbw_item_id,
+                prefer_passkey=prefer_passkey,
+            )
+            return outcome
+
+        async def validate_credentials(creds: dict[str, Any]) -> None:
+            nonlocal verified_auth
+            candidate = cls(
+                session=session,
+                refresh_token=creds["refresh_token"],
+                tenant_id=creds["tenant_id"],
+                client_id=creds.get("client_id", TEAMS_CLIENT_ID),
+                user_display_name=creds.get("user_display_name"),
+                user_email=creds.get("user_email"),
+                user_mri=creds.get("user_mri"),
+            )
+            candidate._is_recovering = True
+            try:
+                await candidate.async_refresh_tokens()
+            finally:
+                candidate._is_recovering = False
+            identity = _decode_jwt_payload(candidate.skype_token or "")
+            candidate.user_email = (
+                identity.get("upn") or identity.get("email") or candidate.user_email
+            )
+            candidate.user_mri = (
+                identity.get("skypeid") or identity.get("mri") or candidate.user_mri
+            )
+            actual_username = candidate.user_email or creds.get("user_email")
+            if expected_username and (
+                not actual_username or actual_username.casefold() != expected_username.casefold()
+            ):
+                raise TeamsAuthError(
+                    "Browser sign-in did not authenticate the selected rbw account"
+                )
+            verified_auth = candidate
 
         try:
-            _, creds = await acquire_browser_auth(bd_client, profile, cls.parse_credentials)
-        except BrowserAuthError as err:
-            raise TeamsAuthError("Failed to acquire Teams browser authentication") from err
-
-        auth = cls(
-            session=session,
-            refresh_token=creds["refresh_token"],
-            tenant_id=creds["tenant_id"],
-            client_id=creds.get("client_id", TEAMS_CLIENT_ID),
-            user_display_name=creds.get("user_display_name"),
-            user_email=creds.get("user_email"),
-            user_mri=creds.get("user_mri"),
-            hass=hass,
-            browser_daemon_url=browser_daemon_url,
-            browser_daemon_profile=profile,
-            browser_daemon_secret=secret,
-        )
-        auth._is_recovering = True
-        await auth.async_refresh_tokens()
+            _, _ = await acquire_browser_auth(
+                bd_client,
+                profile,
+                cls.parse_credentials,
+                login=login if hass is not None and rbw_entry_id and rbw_item_id else None,
+                async_validate=validate_credentials,
+            )
+        except BrowserAuthError:
+            raise TeamsAuthError(
+                "Complete sign-in in the configured browser-daemon profile and retry the Teams repair"
+            ) from None
+        if verified_auth is None:
+            raise TeamsAuthError("Browser credentials could not be validated")
+        auth = verified_auth
+        auth.hass = hass
+        auth.browser_daemon_url = browser_daemon_url
+        auth.browser_daemon_profile = profile
+        auth.browser_daemon_secret = secret
+        auth.rbw_entry_id = rbw_entry_id
+        auth.rbw_item_id = rbw_item_id
+        auth.prefer_passkey = prefer_passkey
         auth._is_recovering = False
         return auth
 
@@ -533,8 +615,8 @@ class TeamsApiClient:
                         .get("content", ""),
                     }
                 _LOGGER.debug("Presence endpoint returned status %s", resp.status)
-        except Exception as err:
-            _LOGGER.debug("Presence fetch failed: %s", err)
+        except Exception:
+            _LOGGER.debug("Presence fetch failed")
         return {"availability": "Available", "activity": "Available", "status_message": ""}
 
     async def get_calendar_meetings(
@@ -566,8 +648,7 @@ class TeamsApiClient:
             timeout=20,
         ) as resp:
             if resp.status != 200:
-                text = await resp.text()
-                raise TeamsApiError(f"Calendar API failed ({resp.status}): {text}")
+                raise TeamsApiError(f"Calendar API failed (HTTP {resp.status})")
             payload = await resp.json()
 
         raw_meetings = payload.get("value") or payload.get("data", {}).get("value", [])
@@ -623,8 +704,8 @@ class TeamsApiClient:
                 if resp.status != 200:
                     return []
                 thread_info = await resp.json()
-        except Exception as err:
-            _LOGGER.debug("Failed to fetch thread info for %s: %s", thread_id, err)
+        except Exception:
+            _LOGGER.debug("Failed to fetch thread info")
             return []
 
         members = thread_info.get("members", [])
@@ -656,7 +737,7 @@ class TeamsApiClient:
         if not organizer_id:
             return {}
         mri = f"8:orgid:{organizer_id}"
-        if (self.auth.user_mri or "").lower() == mri.lower():
+        if _same_user_mri(self.auth.user_mri, mri):
             return {
                 "organizer_name": self.auth.user_display_name,
                 "organizer_email": self.auth.user_email or "",
@@ -686,8 +767,8 @@ class TeamsApiClient:
                         mri = p.get("mri")
                         if mri:
                             self._profile_cache[mri] = p
-        except Exception as err:
-            _LOGGER.debug("Profile resolution failed: %s", err)
+        except Exception:
+            _LOGGER.debug("Profile resolution failed")
 
     async def get_active_call_and_unread(self) -> tuple[dict[str, Any] | None, int]:
         """Fetch conversations to detect active call/meeting state and count unread chats."""
@@ -751,11 +832,11 @@ class TeamsApiClient:
                         if (
                             last_msg_id
                             and last_msg_id != last_sync
-                            and last_msg.get("from") != self.auth.user_mri
+                            and not _same_user_mri(last_msg.get("from"), self.auth.user_mri)
                         ):
                             unread_count += 1
-        except Exception as err:
-            _LOGGER.debug("Failed to fetch conversations: %s", err)
+        except Exception:
+            _LOGGER.debug("Failed to fetch conversations")
 
         return active_call, unread_count
 
@@ -805,8 +886,7 @@ class TeamsApiClient:
             timeout=15,
         ) as resp:
             if resp.status not in (200, 201):
-                text = await resp.text()
-                raise TeamsApiError(f"Failed to send message ({resp.status}): {text}")
+                raise TeamsApiError(f"Failed to send message (HTTP {resp.status})")
             return await resp.json()
 
     async def add_reaction(

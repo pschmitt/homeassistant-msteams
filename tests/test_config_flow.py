@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.msteams.api import TeamsAuthError
 from custom_components.msteams.config_flow import TeamsConfigFlow, TeamsOptionsFlow
 from custom_components.msteams.const import (
+    CONF_BROWSER_DAEMON_PROFILE,
     CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
+    CONF_ENABLE_PUSH,
     CONF_POLL_INTERVAL,
+    CONF_PREFER_PASSKEY,
+    CONF_RBW_ENTRY_ID,
+    CONF_RBW_ITEM_ID,
     CONF_REFRESH_TOKEN,
     CONF_TENANT_ID,
+    CONF_USE_BROWSER_DAEMON,
+    CONF_USER_MRI,
 )
 
 
@@ -99,8 +109,463 @@ async def test_options_flow():
     res = await options_flow.async_step_init(
         {
             CONF_POLL_INTERVAL: 45,
+            CONF_ENABLE_PUSH: False,
             CONF_DEFAULT_CONVERSATION_ID: "19:conv456",
         }
     )
     assert res["type"] == "create_entry"
     assert res["data"][CONF_POLL_INTERVAL] == 45
+    assert res["data"][CONF_ENABLE_PUSH] is False
+
+
+@pytest.mark.parametrize("returned_prefix", ["8:orgid:", "orgid:"])
+@pytest.mark.asyncio
+async def test_reauth_persists_submitted_rbw_settings_to_options(returned_prefix):
+    """Reauth settings override prior option values used during setup."""
+    object_id = "b1c24a5e-7834-4b4c-b523-2fd943719a11"
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_USER_MRI: object_id, CONF_RBW_ENTRY_ID: "old_entry"}
+    entry.options = {
+        CONF_RBW_ENTRY_ID: "old_entry",
+        CONF_RBW_ITEM_ID: "old_item",
+        CONF_PREFER_PASSKEY: True,
+    }
+
+    flow = TeamsConfigFlow()
+    flow.reauth_entry = entry
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_reload = AsyncMock()
+
+    auth = MagicMock()
+    auth.user_mri = f"{returned_prefix}{object_id}"
+    auth.export_data.return_value = {
+        CONF_USER_MRI: f"{returned_prefix}{object_id}",
+        "refresh_token": "new",
+    }
+    user_input = {
+        CONF_USE_BROWSER_DAEMON: True,
+        CONF_BROWSER_DAEMON_PROFILE: "work",
+        CONF_RBW_ENTRY_ID: "new_entry",
+        CONF_RBW_ITEM_ID: "new_item",
+        CONF_PREFER_PASSKEY: False,
+    }
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(return_value=auth),
+        ) as auth_from_browser,
+    ):
+        result = await flow.async_step_reauth_confirm(user_input)
+
+    assert result["type"] == "abort"
+    auth_from_browser.assert_awaited_once_with(
+        session=auth_from_browser.await_args.kwargs["session"],
+        profile="work",
+        hass=flow.hass,
+        rbw_entry_id="new_entry",
+        rbw_item_id="new_item",
+        prefer_passkey=False,
+    )
+    flow.hass.config_entries.async_update_entry.assert_called_once()
+    assert flow.hass.config_entries.async_update_entry.call_args.kwargs["options"] == {
+        CONF_RBW_ENTRY_ID: "new_entry",
+        CONF_RBW_ITEM_ID: "new_item",
+        CONF_PREFER_PASSKEY: False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_reauth_rejects_different_account():
+    """A reauth must stay bound to the account already configured."""
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice"}
+    entry.options = {}
+
+    flow = TeamsConfigFlow()
+    flow.reauth_entry = entry
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    flow.hass.config_entries.async_update_entry = MagicMock()
+
+    auth = MagicMock()
+    auth.user_mri = "8:orgid:bob"
+    user_input = {CONF_USE_BROWSER_DAEMON: True}
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(return_value=auth),
+        ),
+    ):
+        result = await flow.async_step_reauth_confirm(user_input)
+
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "auth_failed"}
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reauth_incomplete_rbw_pair_keeps_submitted_value():
+    """Show the incomplete-pair error without resetting the entered item id."""
+    entry = MagicMock()
+    entry.data = {CONF_USER_MRI: "8:orgid:alice"}
+    entry.options = {}
+
+    flow = TeamsConfigFlow()
+    flow.reauth_entry = entry
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+
+    result = await flow.async_step_reauth_confirm({CONF_RBW_ITEM_ID: "entered_item"})
+
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "rbw_incomplete"}
+    defaults = result["data_schema"]({})
+    assert defaults[CONF_RBW_ITEM_ID] == "entered_item"
+
+
+@pytest.mark.asyncio
+async def test_config_incomplete_rbw_pair_keeps_submitted_value():
+    """Initial setup also keeps the entered item id after validation fails."""
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+
+    result = await flow.async_step_user({CONF_RBW_ITEM_ID: "entered_item"})
+
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "rbw_incomplete"}
+    defaults = result["data_schema"]({})
+    assert defaults[CONF_RBW_ITEM_ID] == "entered_item"
+
+
+@pytest.mark.asyncio
+async def test_options_incomplete_rbw_pair_keeps_submitted_value():
+    """Options validation keeps the entered item id when it shows the error."""
+    entry = MagicMock()
+    entry.data = {}
+    entry.options = {}
+    options_flow = TeamsOptionsFlow()
+    options_flow.handler = "test_entry"
+    options_flow.hass = MagicMock()
+    options_flow.hass.config_entries.async_get_known_entry.return_value = entry
+
+    result = await options_flow.async_step_init({CONF_RBW_ITEM_ID: "entered_item"})
+
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "rbw_incomplete"}
+    defaults = result["data_schema"]({})
+    assert defaults[CONF_RBW_ITEM_ID] == "entered_item"
+
+
+@pytest.mark.asyncio
+async def test_reauth_missing_rbw_inputs_keeps_effective_existing_settings():
+    """Optional omitted RBW inputs retain their existing effective values."""
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice", CONF_RBW_ENTRY_ID: "stored_entry"}
+    entry.options = {
+        CONF_RBW_ENTRY_ID: "configured_entry",
+        CONF_RBW_ITEM_ID: "configured_item",
+        CONF_PREFER_PASSKEY: False,
+    }
+
+    flow = TeamsConfigFlow()
+    flow.reauth_entry = entry
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_reload = AsyncMock()
+
+    auth = MagicMock()
+    auth.user_mri = "8:orgid:alice"
+    auth.export_data.return_value = {CONF_USER_MRI: "8:orgid:alice"}
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(return_value=auth),
+        ) as auth_from_browser,
+    ):
+        await flow.async_step_reauth_confirm({CONF_USE_BROWSER_DAEMON: True})
+
+    assert auth_from_browser.await_args.kwargs["rbw_entry_id"] == "configured_entry"
+    assert auth_from_browser.await_args.kwargs["rbw_item_id"] == "configured_item"
+    assert auth_from_browser.await_args.kwargs["prefer_passkey"] is False
+
+
+def reconfigure_setup(entry):
+    flow = TeamsConfigFlow()
+    flow.context = {"entry_id": entry.entry_id}
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    flow.hass.config_entries.async_get_entry.return_value = entry
+    rbw_entry_id = entry.options.get(CONF_RBW_ENTRY_ID)
+    rbw_entries = []
+    if rbw_entry_id:
+        rbw_entry = MagicMock()
+        rbw_entry.entry_id = rbw_entry_id
+        rbw_entry.title = "rbw"
+        rbw_entries.append(rbw_entry)
+    flow.hass.config_entries.async_entries.return_value = rbw_entries
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_reload = AsyncMock()
+    return flow
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_form_uses_effective_defaults_without_refresh_token():
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {
+        CONF_USER_MRI: "8:orgid:alice",
+        CONF_USE_BROWSER_DAEMON: False,
+        CONF_BROWSER_DAEMON_PROFILE: "data_profile",
+        CONF_TENANT_ID: "data_tenant",
+        CONF_REFRESH_TOKEN: "stored-token",
+    }
+    entry.options = {
+        CONF_USE_BROWSER_DAEMON: True,
+        CONF_BROWSER_DAEMON_PROFILE: "options_profile",
+        CONF_TENANT_ID: "options_tenant",
+        CONF_RBW_ENTRY_ID: "rbw_entry",
+        CONF_RBW_ITEM_ID: "rbw_item",
+        CONF_PREFER_PASSKEY: False,
+    }
+    flow = reconfigure_setup(entry)
+
+    result = await flow.async_step_reconfigure()
+
+    defaults = result["data_schema"]({})
+    assert result["step_id"] == "reconfigure"
+    assert defaults[CONF_USE_BROWSER_DAEMON] is True
+    assert defaults[CONF_BROWSER_DAEMON_PROFILE] == "options_profile"
+    assert defaults[CONF_TENANT_ID] == "options_tenant"
+    assert defaults[CONF_RBW_ENTRY_ID] == "rbw_entry"
+    assert defaults[CONF_RBW_ITEM_ID] == "rbw_item"
+    assert defaults[CONF_PREFER_PASSKEY] is False
+    assert CONF_REFRESH_TOKEN not in defaults
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_updates_existing_entry_and_preserves_options():
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {
+        CONF_USER_MRI: "8:orgid:alice",
+        CONF_USE_BROWSER_DAEMON: True,
+        CONF_BROWSER_DAEMON_PROFILE: "old_profile",
+    }
+    entry.options = {
+        CONF_RBW_ENTRY_ID: "rbw_entry",
+        CONF_RBW_ITEM_ID: "rbw_item",
+        CONF_PREFER_PASSKEY: False,
+        CONF_POLL_INTERVAL: 45,
+        CONF_ENABLE_PUSH: False,
+        CONF_DEFAULT_CONVERSATION_ID: "existing_chat",
+    }
+    flow = reconfigure_setup(entry)
+    auth = MagicMock()
+    auth.user_mri = "8:orgid:alice"
+    auth.export_data.return_value = {CONF_USER_MRI: "8:orgid:alice", "refresh_token": "fresh"}
+    user_input = {
+        CONF_USE_BROWSER_DAEMON: True,
+        CONF_BROWSER_DAEMON_PROFILE: "new_profile",
+        CONF_TENANT_ID: "new_tenant",
+    }
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(return_value=auth),
+        ) as auth_from_browser,
+    ):
+        result = await flow.async_step_reconfigure(user_input)
+
+    assert result == {"type": "abort", "reason": "reconfigure_successful"}
+    assert auth_from_browser.await_args.kwargs["profile"] == "new_profile"
+    assert auth_from_browser.await_args.kwargs["rbw_entry_id"] == "rbw_entry"
+    assert auth_from_browser.await_args.kwargs["rbw_item_id"] == "rbw_item"
+    assert auth_from_browser.await_args.kwargs["prefer_passkey"] is False
+    flow.hass.config_entries.async_update_entry.assert_called_once()
+    call = flow.hass.config_entries.async_update_entry.call_args
+    assert call.args[0] is entry
+    assert call.kwargs["data"][CONF_BROWSER_DAEMON_PROFILE] == "new_profile"
+    assert call.kwargs["data"][CONF_TENANT_ID] == "new_tenant"
+    assert call.kwargs["data"][CONF_USER_MRI] == "8:orgid:alice"
+    assert call.kwargs["data"]["refresh_token"] == "fresh"
+    assert call.kwargs["options"] == entry.options
+    flow.hass.config_entries.async_reload.assert_awaited_once_with("existing_entry")
+
+
+@pytest.mark.parametrize("returned_mri", ["8:orgid:bob", None])
+@pytest.mark.asyncio
+async def test_reconfigure_rejects_different_or_missing_account(returned_mri):
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice", CONF_USE_BROWSER_DAEMON: True}
+    entry.options = {}
+    flow = reconfigure_setup(entry)
+    auth = MagicMock()
+    auth.user_mri = returned_mri
+    user_input = {CONF_USE_BROWSER_DAEMON: True}
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(return_value=auth),
+        ),
+    ):
+        result = await flow.async_step_reconfigure(user_input)
+
+    assert result["errors"] == {"base": "auth_failed"}
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+    flow.hass.config_entries.async_reload.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("auth_error", "expected_error"),
+    [(TeamsAuthError("invalid"), "auth_failed"), (RuntimeError("offline"), "cannot_connect")],
+)
+@pytest.mark.asyncio
+async def test_reconfigure_errors_keep_submitted_nonsecret_values(auth_error, expected_error):
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice"}
+    entry.options = {}
+    flow = reconfigure_setup(entry)
+    user_input = {
+        CONF_USE_BROWSER_DAEMON: True,
+        CONF_BROWSER_DAEMON_PROFILE: "entered_profile",
+        CONF_TENANT_ID: "entered_tenant",
+    }
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(side_effect=auth_error),
+        ),
+    ):
+        result = await flow.async_step_reconfigure(user_input)
+
+    defaults = result["data_schema"]({})
+    assert result["errors"] == {"base": expected_error}
+    assert defaults[CONF_BROWSER_DAEMON_PROFILE] == "entered_profile"
+    assert defaults[CONF_TENANT_ID] == "entered_tenant"
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_rejects_half_rbw_pair_from_effective_settings():
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice"}
+    entry.options = {CONF_RBW_ENTRY_ID: "rbw_entry", CONF_RBW_ITEM_ID: "rbw_item"}
+    flow = reconfigure_setup(entry)
+
+    result = await flow.async_step_reconfigure({CONF_RBW_ENTRY_ID: ""})
+
+    defaults = result["data_schema"]({})
+    assert result["errors"] == {"base": "rbw_incomplete"}
+    assert defaults[CONF_RBW_ENTRY_ID] == ""
+    assert defaults[CONF_RBW_ITEM_ID] == "rbw_item"
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_clears_rbw_pair_and_keeps_omitted_options():
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice", CONF_USE_BROWSER_DAEMON: True}
+    entry.options = {
+        CONF_RBW_ENTRY_ID: "rbw_entry",
+        CONF_RBW_ITEM_ID: "rbw_item",
+        CONF_PREFER_PASSKEY: False,
+        CONF_POLL_INTERVAL: 45,
+        CONF_ENABLE_PUSH: False,
+        CONF_DEFAULT_CONVERSATION_ID: "existing_chat",
+    }
+    flow = reconfigure_setup(entry)
+    auth = MagicMock()
+    auth.user_mri = "8:orgid:alice"
+    auth.export_data.return_value = {CONF_USER_MRI: "8:orgid:alice"}
+
+    with (
+        patch(
+            "custom_components.msteams.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(return_value=auth),
+        ) as auth_from_browser,
+    ):
+        result = await flow.async_step_reconfigure(
+            {
+                CONF_USE_BROWSER_DAEMON: True,
+                CONF_RBW_ENTRY_ID: "",
+                CONF_RBW_ITEM_ID: "",
+            }
+        )
+
+    assert result["reason"] == "reconfigure_successful"
+    assert auth_from_browser.await_args.kwargs["rbw_entry_id"] == ""
+    assert auth_from_browser.await_args.kwargs["rbw_item_id"] == ""
+    update = flow.hass.config_entries.async_update_entry.call_args.kwargs
+    assert update["options"] == {
+        CONF_RBW_ENTRY_ID: "",
+        CONF_RBW_ITEM_ID: "",
+        CONF_PREFER_PASSKEY: False,
+        CONF_POLL_INTERVAL: 45,
+        CONF_ENABLE_PUSH: False,
+        CONF_DEFAULT_CONVERSATION_ID: "existing_chat",
+    }
+    flow.hass.config_entries.async_reload.assert_awaited_once_with("existing_entry")
+
+
+@pytest.mark.parametrize("language", ["en", "de"])
+def test_authentication_fields_have_translated_labels(language):
+    root = Path(__file__).resolve().parents[1] / "custom_components" / "msteams"
+    translated = json.loads((root / "translations" / f"{language}.json").read_text())
+    fields = {CONF_RBW_ENTRY_ID, CONF_RBW_ITEM_ID, CONF_PREFER_PASSKEY}
+    for step in ("user", "reauth_confirm", "reconfigure"):
+        assert fields <= translated["config"]["step"][step]["data"].keys()
+    assert fields | {CONF_ENABLE_PUSH} <= translated["options"]["step"]["init"]["data"].keys()
+    for section in ("config", "options"):
+        assert translated[section]["error"]["rbw_incomplete"]
+    assert translated["config"]["abort"]["reconfigure_successful"]

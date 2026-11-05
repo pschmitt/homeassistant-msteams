@@ -13,6 +13,7 @@ from custom_components.msteams.api import (
     _decode_jwt_payload,
     _generate_client_message_id,
     _markdown_to_teams_html,
+    _same_user_mri,
 )
 
 
@@ -52,6 +53,19 @@ def test_decode_jwt_payload():
     decoded = _decode_jwt_payload(encoded)
     assert decoded.get("upn") == "test@example.com"
     assert decoded.get("skypeid") == "8:orgid:12345"
+
+
+@pytest.mark.parametrize("left_prefix", ["", "orgid:", "8:orgid:"])
+@pytest.mark.parametrize("right_prefix", ["", "orgid:", "8:orgid:"])
+def test_same_user_mri_normalizes_org_uuid_forms(left_prefix, right_prefix):
+    object_id = "b1c24a5e-7834-4b4c-b523-2fd943719a11"
+    assert _same_user_mri(f"{left_prefix}{object_id}", f"{right_prefix}{object_id.upper()}")
+    assert not _same_user_mri(
+        f"{left_prefix}{object_id}", f"{right_prefix}9d5c654c-970b-4cb2-a31b-5799e2c9b1df"
+    )
+    assert not _same_user_mri(f"{left_prefix}{object_id}", f"8:gcch:{object_id}")
+    assert not _same_user_mri("not-an-id", "orgid:not-an-id")
+    assert not _same_user_mri("not-an-id", "8:orgid:not-an-id")
 
 
 @pytest.mark.asyncio
@@ -243,6 +257,152 @@ async def test_auth_self_recovery_on_refresh_failure():
     assert success is True
     assert auth.refresh_token == "new_recovered_token"
     auth.async_from_browser_daemon.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_browser_recovery_account_mismatch_enters_cooldown():
+    auth = TeamsAuth(
+        session=MagicMock(),
+        refresh_token="expired",
+        user_mri="expected-user",
+        browser_daemon_url="https://browser.example",
+    )
+    recovered = MagicMock()
+    recovered.user_mri = "different-user"
+    auth.async_from_browser_daemon = AsyncMock(return_value=recovered)
+
+    assert await auth._async_recover_via_browser_daemon() is False
+    assert auth._browser_retry_at > 0
+    assert await auth._async_recover_via_browser_daemon() is False
+    auth.async_from_browser_daemon.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_browser_recovery_accepts_bare_uuid_for_same_org_account():
+    object_id = "b1c24a5e-7834-4b4c-b523-2fd943719a11"
+    auth = TeamsAuth(
+        session=MagicMock(),
+        refresh_token="expired",
+        user_mri=object_id,
+        browser_daemon_url="https://browser.example",
+    )
+    recovered = MagicMock()
+    recovered.refresh_token = "new-refresh"
+    recovered.tenant_id = "tenant"
+    recovered.client_id = "client"
+    recovered.substrate_token = "substrate"
+    recovered.spaces_token = "spaces"
+    recovered.csa_token = "csa"
+    recovered.skype_token = "skype"
+    recovered.tokens_expires_at = None
+    recovered.user_mri = f"8:orgid:{object_id}"
+    recovered.user_display_name = "User"
+    recovered.user_email = "user@example.com"
+    auth.async_from_browser_daemon = AsyncMock(return_value=recovered)
+
+    assert await auth._async_recover_via_browser_daemon() is True
+    assert auth.user_mri == f"8:orgid:{object_id}"
+
+
+@pytest.mark.asyncio
+async def test_browser_auth_retries_rejected_credentials_once(monkeypatch, caplog):
+    from custom_components.msteams import api
+
+    def response(status, payload=None):
+        result = AsyncMock()
+        result.status = status
+        result.json = AsyncMock(return_value=payload or {})
+        result.text = AsyncMock(return_value="sensitive server response")
+        return AsyncMock(__aenter__=AsyncMock(return_value=result))
+
+    session = MagicMock()
+    session.post.side_effect = [
+        response(400),
+        response(200, {"access_token": "access", "expires_in": 3600}),
+        response(200, {"access_token": "access", "expires_in": 3600}),
+        response(200, {"access_token": "access", "expires_in": 3600}),
+        response(200, {"tokens": {"skypeToken": "skype"}}),
+    ]
+    credentials = {
+        "refresh_token": "candidate-token",
+        "tenant_id": "tenant",
+        "client_id": "client",
+        "user_email": "user@example.com",
+    }
+    login = AsyncMock(return_value=("authenticated", "user@example.com"))
+    calls = []
+
+    async def acquire(_client, _profile, _parse, *, login=None, async_validate=None):
+        calls.append("acquire")
+        with pytest.raises(TeamsAuthError):
+            await async_validate(credentials)
+        assert await login("session", "tab", "node") == "authenticated"
+        await async_validate(credentials)
+        return {}, credentials
+
+    monkeypatch.setattr(api, "acquire_browser_auth", acquire)
+    monkeypatch.setattr(api, "async_login", login)
+
+    auth = await TeamsAuth.async_from_browser_daemon(
+        session,
+        browser_daemon_url="https://browser.example",
+        hass=object(),
+        rbw_entry_id="entry",
+        rbw_item_id="item",
+    )
+
+    assert auth.is_authenticated
+    assert calls == ["acquire"]
+    login.assert_awaited_once()
+    assert "sensitive server response" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_browser_auth_rejects_selected_account_mismatch(monkeypatch):
+    from custom_components.msteams import api
+    from custom_components.msteams.browser_auth import BrowserAuthError
+
+    def response(payload):
+        result = AsyncMock()
+        result.status = 200
+        result.json = AsyncMock(return_value=payload)
+        return AsyncMock(__aenter__=AsyncMock(return_value=result))
+
+    session = MagicMock()
+    session.post.side_effect = [
+        response({"access_token": "access", "expires_in": 3600}),
+        response({"access_token": "access", "expires_in": 3600}),
+        response({"access_token": "access", "expires_in": 3600}),
+        response({"tokens": {"skypeToken": "skype"}}),
+    ]
+    credentials = {
+        "refresh_token": "candidate-token",
+        "tenant_id": "tenant",
+        "client_id": "client",
+        "user_email": "different@example.com",
+    }
+    login = AsyncMock(return_value=("authenticated", "expected@example.com"))
+
+    async def acquire(_client, _profile, _parse, *, login=None, async_validate=None):
+        await login("session", "tab", "node")
+        try:
+            await async_validate(credentials)
+        except TeamsAuthError:
+            raise BrowserAuthError("sign-in required") from None
+        return {}, credentials
+
+    monkeypatch.setattr(api, "acquire_browser_auth", acquire)
+    monkeypatch.setattr(api, "async_login", login)
+
+    with pytest.raises(TeamsAuthError, match="Complete sign-in"):
+        await TeamsAuth.async_from_browser_daemon(
+            session,
+            browser_daemon_url="https://browser.example",
+            hass=object(),
+            rbw_entry_id="entry",
+            rbw_item_id="item",
+        )
+    login.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,6 +24,10 @@ class BrowserAuthError(Exception):
     """Browser session cannot provide Teams authentication."""
 
 
+class BrowserInteractionRequired(BrowserAuthError):
+    """The retained browser page needs attention through browser-daemon."""
+
+
 def _is_teams_host(url: str | None) -> bool:
     if not url:
         return False
@@ -38,17 +42,19 @@ async def acquire_browser_auth(
     bd_client: BrowserDaemon,
     profile: str,
     validate: Callable[[dict[str, Any]], dict[str, Any]],
+    login: Callable[[str, str, str | None], Awaitable[str]] | None = None,
+    async_validate: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Acquire auth state via a browser-daemon client and release owned resources."""
     # 1. Fetch overview
     try:
         overview = await bd_client.overview()
-    except BrowserDaemonError as err:
-        raise BrowserAuthError(f"Failed to connect to browser-daemon: {err}") from err
+    except BrowserDaemonError:
+        raise BrowserAuthError("Failed to connect to browser-daemon") from None
 
     prof = next((p for p in overview.get("profiles", []) if p.get("name") == profile), None)
     if not prof:
-        raise BrowserAuthError(f"browser-daemon has no profile '{profile}'")
+        raise BrowserAuthError("browser-daemon does not have the configured profile")
 
     node_name = prof.get("node_name")
     session_id = prof.get("session_id")
@@ -65,22 +71,11 @@ async def acquire_browser_auth(
             )
             created_session_id = session_info["id"]
             session_id = created_session_id
-        except BrowserDaemonError as err:
-            raise BrowserAuthError(
-                f"Failed to start browser-daemon session for profile '{profile}': {err}"
-            ) from err
-    else:
-        try:
-            await bd_client.set_idle_timeout(session_id, 5, node=node_name)
-        except BrowserDaemonError as err:
-            _LOGGER.debug(
-                "Could not set idle timeout on attached session %s: %s",
-                session_id,
-                err,
-            )
-
+        except BrowserDaemonError:
+            raise BrowserAuthError("Failed to start browser-daemon session") from None
     tab_id: str | None = None
     opened_new_tab = False
+    retain_for_login = False
     try:
         # 2. Check overview targets for an existing Teams tab in this session
         for target in overview.get("targets", []):
@@ -101,10 +96,18 @@ async def acquire_browser_auth(
                     if (session_id is None or t_session == session_id) and _is_teams_host(t_url):
                         tab_id = t.get("id")
                         break
-            except Exception as err:
-                _LOGGER.debug("Could not query open tabs: %s", err)
+            except Exception:
+                _LOGGER.debug("Could not query open tabs")
 
         if not tab_id:
+            new_tab = await bd_client.open_tab(
+                DEFAULT_TEAMS_BASE_URL, session_id=session_id, node=node_name
+            )
+            tab_id = new_tab.get("id")
+            opened_new_tab = True
+
+        # Interactive login must use a tab owned by this acquisition, never a user's tab.
+        if login is not None and not opened_new_tab:
             new_tab = await bd_client.open_tab(
                 DEFAULT_TEAMS_BASE_URL, session_id=session_id, node=node_name
             )
@@ -115,7 +118,7 @@ async def acquire_browser_auth(
         creds = None
         max_wait = 45
         start_time = time.time()
-        last_err: Exception | None = None
+        login_attempted = False
 
         while time.time() - start_time < max_wait:
             try:
@@ -131,38 +134,55 @@ async def acquire_browser_auth(
                     try:
                         parsed = validate(auth_data)
                         if parsed.get("refresh_token"):
+                            if async_validate is not None:
+                                await async_validate(parsed)
                             creds = parsed
+                            retain_for_login = False
                             break
                     except Exception:
                         pass
-            except Exception as err:
-                last_err = err
-                _LOGGER.debug("Waiting for Teams auth export: %s", err)
+            except Exception:
+                _LOGGER.debug("Waiting for Teams authentication export")
+            if login is not None and not login_attempted:
+                login_attempted = True
+                retain_for_login = True
+                outcome = await login(session_id, tab_id, node_name)
+                if outcome != "authenticated":
+                    raise BrowserInteractionRequired(
+                        "Complete sign-in in the configured browser-daemon profile, then retry the Teams repair"
+                    )
+                start_time = time.time()
             await asyncio.sleep(2)
 
         if not creds:
-            raise BrowserAuthError(
-                f"Timed out waiting for Teams authentication from browser-daemon: {last_err or 'RefreshToken not found in page storage'}"
-            )
+            raise BrowserAuthError("Timed out waiting for Teams authentication from browser-daemon")
 
     except BrowserAuthError:
         raise
-    except Exception as err:
-        raise BrowserAuthError(f"Failed to extract Teams auth from browser-daemon: {err}") from err
+    except Exception:
+        raise BrowserAuthError("Failed to acquire Teams browser authentication") from None
     finally:
-        if opened_new_tab and tab_id:
+        if retain_for_login and created_session_id:
+            try:
+                await bd_client.set_idle_timeout(session_id, 15, node=node_name)
+            except BrowserDaemonError:
+                _LOGGER.debug("Could not extend the login session timeout")
+        if opened_new_tab and tab_id and not retain_for_login:
             try:
                 await bd_client.close_tab(tab_id, node=node_name)
-            except Exception as err:
-                _LOGGER.debug("Failed to close temporary tab %s: %s", tab_id, err)
+            except Exception:
+                _LOGGER.debug("Failed to close temporary Teams tab")
 
         target_sid = created_session_id or session_id
-        if target_sid:
-            in_use = False
+        if target_sid and not retain_for_login:
+            in_use = not bool(created_session_id)
             try:
-                s_info = await bd_client.session(target_sid, node=node_name)
+                # BrowserDaemon.__init__ stores the HTTP ClientSession on
+                # `session`, shadowing its method of the same name.
+                response = await BrowserDaemon.session(bd_client, target_sid, node=node_name)
+                s_info = response["session"]
                 if (
-                    s_info.get("client_count", 0) > 0
+                    s_info.get("client_count") != 0
                     or s_info.get("clients")
                     or s_info.get("viewer_count", 0) > 0
                 ):
@@ -173,24 +193,16 @@ async def acquire_browser_auth(
                     for t in tabs
                 ):
                     in_use = True
-            except Exception as err:
-                _LOGGER.debug("Could not check usage for browser session %s: %s", target_sid, err)
-                in_use = not bool(created_session_id)
+            except Exception:
+                _LOGGER.debug("Could not check browser session usage")
+                in_use = True
 
             if not in_use:
                 try:
                     await bd_client.delete_session(target_sid, node=node_name)
-                except Exception as err:
-                    _LOGGER.debug("Failed to delete unused browser session %s: %s", target_sid, err)
-            else:
-                try:
-                    await bd_client.set_idle_timeout(target_sid, 5, node=node_name)
-                except Exception as err:
-                    _LOGGER.debug(
-                        "Failed to set idle timeout on in-use session %s: %s",
-                        target_sid,
-                        err,
-                    )
+                except Exception:
+                    _LOGGER.debug("Failed to delete unused browser session")
+            # Attached sessions belong to the user. Leave their timeout unchanged.
 
     return auth_data, creds
 

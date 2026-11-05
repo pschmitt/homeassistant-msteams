@@ -11,12 +11,16 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import TeamsAuth, TeamsAuthError
+from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
+    CONF_ENABLE_PUSH,
     CONF_POLL_INTERVAL,
+    CONF_PREFER_PASSKEY,
+    CONF_RBW_ENTRY_ID,
+    CONF_RBW_ITEM_ID,
     CONF_REFRESH_TOKEN,
     CONF_TENANT_ID,
     CONF_USE_BROWSER_DAEMON,
@@ -28,6 +32,24 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def rbw_schema(hass: Any, defaults: dict[str, Any]) -> dict[Any, Any]:
+    entries = {"": "Disabled"}
+    entries.update(
+        {entry.entry_id: entry.title for entry in hass.config_entries.async_entries("rbw")}
+    )
+    return {
+        vol.Optional(CONF_RBW_ENTRY_ID, default=defaults.get(CONF_RBW_ENTRY_ID, "")): vol.In(
+            entries
+        ),
+        vol.Optional(CONF_RBW_ITEM_ID, default=defaults.get(CONF_RBW_ITEM_ID, "")): str,
+        vol.Optional(CONF_PREFER_PASSKEY, default=defaults.get(CONF_PREFER_PASSKEY, True)): bool,
+    }
+
+
+def rbw_config_valid(data: dict[str, Any]) -> bool:
+    return bool(data.get(CONF_RBW_ENTRY_ID)) == bool(data.get(CONF_RBW_ITEM_ID))
 
 
 class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -45,7 +67,9 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.hass.data.get("browser_daemon")
         )
 
-        if user_input is not None:
+        if user_input is not None and not rbw_config_valid(user_input):
+            errors["base"] = "rbw_incomplete"
+        if user_input is not None and rbw_config_valid(user_input):
             session = async_get_clientsession(self.hass)
             use_browser_daemon = user_input.get(CONF_USE_BROWSER_DAEMON, False)
             creds_file = user_input.get(CONF_CREDENTIALS_FILE)
@@ -59,6 +83,9 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         session=session,
                         profile=profile,
                         hass=self.hass,
+                        rbw_entry_id=user_input.get(CONF_RBW_ENTRY_ID),
+                        rbw_item_id=user_input.get(CONF_RBW_ITEM_ID),
+                        prefer_passkey=user_input.get(CONF_PREFER_PASSKEY, True),
                     )
                 elif creds_file:
                     auth = await TeamsAuth.async_from_credentials(session, creds_file)
@@ -117,6 +144,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema_dict[vol.Optional(CONF_TENANT_ID, default="common")] = str
         schema_dict[vol.Optional(CONF_USER_DISPLAY_NAME)] = str
         schema_dict[vol.Optional(CONF_DEFAULT_CONVERSATION_ID)] = str
+        schema_dict.update(rbw_schema(self.hass, user_input or {}))
 
         return self.async_show_form(
             step_id="user", data_schema=vol.Schema(schema_dict), errors=errors
@@ -131,25 +159,77 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Confirm reauthorization."""
+        return await self._async_step_authenticate(
+            user_input,
+            entry=self.reauth_entry,
+            step_id="reauth_confirm",
+            success_reason="reauth_successful",
+        )
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Reconfigure an existing Teams account."""
+        entry = self._get_reconfigure_entry()
+        return await self._async_step_authenticate(
+            user_input,
+            entry=entry,
+            step_id="reconfigure",
+            success_reason="reconfigure_successful",
+        )
+
+    async def _async_step_authenticate(
+        self,
+        user_input: dict[str, Any] | None,
+        *,
+        entry: config_entries.ConfigEntry | None,
+        step_id: str,
+        success_reason: str,
+    ) -> FlowResult:
+        """Authenticate and update an existing config entry."""
         errors: dict[str, str] = {}
         has_browser_daemon = "browser_daemon" in self.hass.config.components or bool(
             self.hass.data.get("browser_daemon")
         )
+        effective_settings = {
+            **(entry.data if entry else {}),
+            **(entry.options if entry else {}),
+        }
+        if step_id == "reconfigure":
+            defaults = {**effective_settings, **(user_input or {})}
+            has_browser_daemon = has_browser_daemon or CONF_USE_BROWSER_DAEMON in defaults
+        else:
+            defaults = {
+                **(entry.data if entry else {}),
+                **(entry.options if entry else {}),
+                **(user_input or {}),
+            }
 
-        if user_input is not None:
+        submitted_settings = {**effective_settings, **(user_input or {})}
+        if user_input is not None and not rbw_config_valid(submitted_settings):
+            errors["base"] = "rbw_incomplete"
+        if user_input is not None and rbw_config_valid(submitted_settings):
             session = async_get_clientsession(self.hass)
-            use_browser_daemon = user_input.get(CONF_USE_BROWSER_DAEMON, has_browser_daemon)
-            creds_file = user_input.get(CONF_CREDENTIALS_FILE)
+            use_browser_daemon = user_input.get(
+                CONF_USE_BROWSER_DAEMON,
+                effective_settings.get(CONF_USE_BROWSER_DAEMON, has_browser_daemon),
+            )
+            auth_settings = {**effective_settings, **user_input}
+            creds_file = auth_settings.get(CONF_CREDENTIALS_FILE)
             refresh_token = user_input.get(CONF_REFRESH_TOKEN)
 
             try:
                 auth: TeamsAuth | None = None
                 if use_browser_daemon:
-                    profile = user_input.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE)
+                    profile = user_input.get(
+                        CONF_BROWSER_DAEMON_PROFILE,
+                        effective_settings.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
+                    )
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
                         profile=profile,
                         hass=self.hass,
+                        rbw_entry_id=submitted_settings.get(CONF_RBW_ENTRY_ID),
+                        rbw_item_id=submitted_settings.get(CONF_RBW_ITEM_ID),
+                        prefer_passkey=submitted_settings.get(CONF_PREFER_PASSKEY, True),
                     )
                 elif creds_file:
                     auth = await TeamsAuth.async_from_credentials(session, creds_file)
@@ -157,50 +237,95 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     auth = TeamsAuth(
                         session=session,
                         refresh_token=refresh_token,
-                        tenant_id=user_input.get(CONF_TENANT_ID, "common"),
+                        tenant_id=auth_settings.get(CONF_TENANT_ID, "common"),
                         client_id=TEAMS_CLIENT_ID,
                     )
                     await auth.async_refresh_tokens()
                 else:
                     errors["base"] = "missing_credentials"
 
-                if auth and self.reauth_entry:
+                if (
+                    auth
+                    and entry
+                    and entry.data.get("user_mri")
+                    and not _same_user_mri(auth.user_mri, entry.data["user_mri"])
+                ):
+                    raise TeamsAuthError("Authentication returned a different Teams account")
+
+                if auth and entry:
+                    updated_options = {
+                        **entry.options,
+                        CONF_RBW_ENTRY_ID: submitted_settings.get(CONF_RBW_ENTRY_ID, ""),
+                        CONF_RBW_ITEM_ID: submitted_settings.get(CONF_RBW_ITEM_ID, ""),
+                        CONF_PREFER_PASSKEY: submitted_settings.get(CONF_PREFER_PASSKEY, True),
+                    }
+                    updated_options.update(
+                        {
+                            key: user_input[key]
+                            for key in (
+                                CONF_USE_BROWSER_DAEMON,
+                                CONF_BROWSER_DAEMON_PROFILE,
+                                CONF_TENANT_ID,
+                            )
+                            if key in user_input and key in entry.options
+                        }
+                    )
+                    persisted_settings = {
+                        key: submitted_settings[key]
+                        for key in (
+                            CONF_USE_BROWSER_DAEMON,
+                            CONF_BROWSER_DAEMON_PROFILE,
+                            CONF_TENANT_ID,
+                        )
+                        if key in submitted_settings
+                    }
                     self.hass.config_entries.async_update_entry(
-                        self.reauth_entry,
+                        entry,
                         data={
-                            **self.reauth_entry.data,
+                            **entry.data,
+                            **persisted_settings,
                             **user_input,
                             **auth.export_data(),
                         },
+                        options=updated_options,
                     )
-                    await self.hass.config_entries.async_reload(self.reauth_entry.entry_id)
-                    return self.async_abort(reason="reauth_successful")
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+                    return self.async_abort(reason=success_reason)
 
             except AbortFlow:
                 raise
             except TeamsAuthError as err:
-                _LOGGER.warning("Authentication failed during reauth: %s", err)
+                _LOGGER.warning("Authentication failed during %s: %s", step_id, err)
                 errors["base"] = "auth_failed"
             except Exception as err:
-                _LOGGER.exception("Unexpected error during Teams reauth: %s", err)
+                _LOGGER.exception("Unexpected error during Teams %s: %s", step_id, err)
                 errors["base"] = "cannot_connect"
 
-        default_profile = (
-            self.reauth_entry.data.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE)
-            if self.reauth_entry
-            else DEFAULT_PROFILE
-        )
+        default_profile = defaults.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE)
         schema_dict: dict[Any, Any] = {}
         if has_browser_daemon:
-            schema_dict[vol.Optional(CONF_USE_BROWSER_DAEMON, default=True)] = bool
+            schema_dict[
+                vol.Optional(
+                    CONF_USE_BROWSER_DAEMON,
+                    default=defaults.get(CONF_USE_BROWSER_DAEMON, True),
+                )
+            ] = bool
             schema_dict[vol.Optional(CONF_BROWSER_DAEMON_PROFILE, default=default_profile)] = str
 
-        schema_dict[vol.Optional(CONF_CREDENTIALS_FILE)] = str
+        schema_dict[
+            vol.Optional(
+                CONF_CREDENTIALS_FILE,
+                default=defaults.get(CONF_CREDENTIALS_FILE, ""),
+            )
+        ] = str
         schema_dict[vol.Optional(CONF_REFRESH_TOKEN)] = str
-        schema_dict[vol.Optional(CONF_TENANT_ID, default="common")] = str
+        schema_dict[
+            vol.Optional(CONF_TENANT_ID, default=defaults.get(CONF_TENANT_ID, "common"))
+        ] = str
+        schema_dict.update(rbw_schema(self.hass, defaults))
 
         return self.async_show_form(
-            step_id="reauth_confirm", data_schema=vol.Schema(schema_dict), errors=errors
+            step_id=step_id, data_schema=vol.Schema(schema_dict), errors=errors
         )
 
     @staticmethod
@@ -217,8 +342,11 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage the options."""
+        errors = {}
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            if rbw_config_valid(user_input):
+                return self.async_create_entry(title="", data=user_input)
+            errors["base"] = "rbw_incomplete"
 
         schema = vol.Schema(
             {
@@ -230,6 +358,10 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
                 vol.Optional(
+                    CONF_ENABLE_PUSH,
+                    default=self.config_entry.options.get(CONF_ENABLE_PUSH, True),
+                ): bool,
+                vol.Optional(
                     CONF_DEFAULT_CONVERSATION_ID,
                     default=self.config_entry.options.get(
                         CONF_DEFAULT_CONVERSATION_ID,
@@ -238,4 +370,14 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
                 ): str,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        schema = schema.extend(
+            rbw_schema(
+                self.hass,
+                {
+                    **self.config_entry.data,
+                    **self.config_entry.options,
+                    **(user_input or {}),
+                },
+            )
+        )
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

@@ -2,7 +2,8 @@
   "domain": "msteams",
   "name": "Microsoft Teams",
   "after_dependencies": [
-    "browser_daemon"
+    "browser_daemon",
+    "rbw"
   ],
   "codeowners": [
     "@pschmitt"
@@ -16,7 +17,7 @@
     "custom_components.msteams"
   ],
   "requirements": [
-    "browser-daemon-client==0.10.0"
+    "browser-daemon-client==0.12.2"
   ],
   "version": "0.1.0"
 }

@@ -7,6 +7,9 @@
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
           "browser_daemon_profile": "Browser Daemon Profilname",
+          "rbw_entry_id": "rbw-Integration",
+          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
+          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "credentials_file": "Pfad zur Anmeldedatei (z.B. /config/teams_credentials.json)",
           "refresh_token": "OAuth-Refresh-Token",
           "tenant_id": "Mandanten-ID (Tenant ID)",
@@ -20,6 +23,23 @@
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
           "browser_daemon_profile": "Browser Daemon Profilname",
+          "rbw_entry_id": "rbw-Integration",
+          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
+          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
+          "credentials_file": "Pfad zur Anmeldedatei",
+          "refresh_token": "OAuth-Refresh-Token",
+          "tenant_id": "Mandanten-ID (Tenant ID)"
+        }
+      },
+      "reconfigure": {
+        "title": "Microsoft Teams neu konfigurieren",
+        "description": "Aktualisiere die Authentifizierungseinstellungen dieses Teams-Kontos. Melde dich erneut an, um die Änderungen zu speichern.",
+        "data": {
+          "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
+          "browser_daemon_profile": "Browser Daemon Profilname",
+          "rbw_entry_id": "rbw-Integration",
+          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
+          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "credentials_file": "Pfad zur Anmeldedatei",
           "refresh_token": "OAuth-Refresh-Token",
           "tenant_id": "Mandanten-ID (Tenant ID)"
@@ -27,21 +47,30 @@
       }
     },
     "error": {
+      "rbw_incomplete": "Bitte sowohl eine rbw-Integration als auch eine Eintrags-ID auswählen oder beide Felder leer lassen.",
       "missing_credentials": "Bitte Browser Daemon Import wählen oder eine Anmeldedatei bzw. ein Refresh-Token angeben.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
       "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen."
     },
     "abort": {
       "already_configured": "Dieses Microsoft Teams-Konto ist bereits konfiguriert.",
-      "reauth_successful": "Erneute Authentifizierung war erfolgreich."
+      "reauth_successful": "Erneute Authentifizierung war erfolgreich.",
+      "reconfigure_successful": "Microsoft Teams wurde erfolgreich neu konfiguriert."
     }
   },
   "options": {
+    "error": {
+      "rbw_incomplete": "Bitte sowohl eine rbw-Integration als auch eine Eintrags-ID auswählen oder beide Felder leer lassen."
+    },
     "step": {
       "init": {
         "title": "Microsoft Teams Optionen",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
+          "enable_push": "Echtzeit-Push-Updates aktivieren",
+          "rbw_entry_id": "rbw-Integration",
+          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
+          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "default_conversation_id": "Standard-Konversations-ID für Benachrichtigungen"
         }
       }
@@ -54,7 +83,7 @@
         "step": {
           "reauth": {
             "title": "Teams neu anmelden",
-            "description": "Die Anmeldung wird über das Browser-Daemon-Profil erneuert (dort muss Teams angemeldet sein).",
+            "description": "Die Anmeldung wird über das konfigurierte Browser-Daemon-Profil und rbw-Konto erneut versucht. Wenn Microsoft MFA, eine Zustimmung, eine Passwortänderung oder einen anderen manuellen Schritt verlangt, öffne dieses Profil im Browser-Daemon-Dashboard, schließe den Schritt ab und versuche es hier erneut. Die Anmeldeseite bleibt 15 Minuten geöffnet.",
             "data": {
               "browser_daemon_url": "Browser daemon URL",
               "browser_daemon_profile": "Browser profile",

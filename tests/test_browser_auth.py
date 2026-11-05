@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from browser_daemon_client import BrowserDaemon, BrowserDaemonError
 
-from custom_components.msteams.browser_auth import BrowserAuthError, acquire_browser_auth
+from custom_components.msteams.browser_auth import (
+    BrowserAuthError,
+    BrowserInteractionRequired,
+    acquire_browser_auth,
+)
 
 
 def client_with_session(*, owned=False):
@@ -27,6 +31,7 @@ def client_with_session(*, owned=False):
     )
     client.close_tab = AsyncMock()
     client.session = AsyncMock(return_value={"client_count": 0})
+    client._json = AsyncMock(return_value={"session": {"client_count": 0}, "targets": []})
     client.delete_session = AsyncMock()
     return client
 
@@ -38,16 +43,136 @@ async def test_acquire_and_clean_up_owned_session():
     assert data["local_storage"]
     assert creds["refresh_token"] == "fake"
     client.close_tab.assert_awaited_once()
+    client._json.assert_awaited_once_with("GET", "/api/sessions/session", node="node")
     client.delete_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_info",
+    [
+        {},
+        {"session": None, "targets": []},
+        {"session": {}, "targets": []},
+        {"session": {"client_count": None}, "targets": []},
+    ],
+)
+async def test_owned_session_with_missing_or_malformed_metadata_is_not_deleted(session_info):
+    client = client_with_session(owned=True)
+    client._json.return_value = session_info
+
+    await acquire_browser_auth(client, "work", lambda _: {"refresh_token": "fake"})
+
+    client._json.assert_awaited_once_with("GET", "/api/sessions/session", node="node")
+    client.close_tab.assert_awaited_once()
+    client.delete_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_attached_session_with_other_client_is_not_deleted():
     client = client_with_session()
-    client.session.return_value = {"client_count": 1}
+    client._json.return_value = {"session": {"client_count": 1}, "targets": []}
     await acquire_browser_auth(client, "work", lambda _: {"refresh_token": "fake"})
     client.delete_session.assert_not_awaited()
-    assert client.set_idle_timeout.await_count == 2
+    client.set_idle_timeout.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rejected_credentials_trigger_one_login_and_revalidation():
+    client = client_with_session()
+    validate = AsyncMock(side_effect=[BrowserAuthError("rejected"), None])
+    login = AsyncMock(return_value="authenticated")
+
+    data, creds = await acquire_browser_auth(
+        client,
+        "work",
+        lambda _: {"refresh_token": "fake"},
+        login=login,
+        async_validate=validate,
+    )
+
+    assert data["local_storage"]
+    assert creds["refresh_token"] == "fake"
+    login.assert_awaited_once_with("session", "tab", "node")
+    assert validate.await_count == 2
+    client.close_tab.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pending_login_keeps_own_page_for_repair():
+    client = client_with_session()
+    client.overview.return_value["targets"] = [
+        {
+            "sessionId": "session",
+            "type": "page",
+            "url": "https://teams.microsoft.com/",
+            "id": "user-tab",
+        }
+    ]
+    login = AsyncMock(return_value="needs_interaction")
+    validate_credentials = AsyncMock(side_effect=BrowserAuthError("rejected"))
+
+    with pytest.raises(BrowserInteractionRequired):
+        await acquire_browser_auth(
+            client,
+            "work",
+            lambda _: {"refresh_token": "fake"},
+            login=login,
+            async_validate=validate_credentials,
+        )
+
+    client.open_tab.assert_awaited_once()
+    login.assert_awaited_once_with("session", "tab", "node")
+    validate_credentials.assert_awaited_once()
+    client.close_tab.assert_not_awaited()
+    client.delete_session.assert_not_awaited()
+    client.set_idle_timeout.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_owned_pending_login_gets_extended_timeout():
+    client = client_with_session(owned=True)
+    login = AsyncMock(return_value="needs_interaction")
+
+    with pytest.raises(BrowserInteractionRequired):
+        await acquire_browser_auth(
+            client,
+            "work",
+            lambda _: {},
+            login=login,
+        )
+
+    client.set_idle_timeout.assert_awaited_once_with("session", 15, node="node")
+    client.delete_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_attached_session_timeout_is_not_lowered_for_login():
+    client = client_with_session()
+    client.overview.return_value["targets"] = [
+        {
+            "sessionId": "session",
+            "type": "page",
+            "url": "https://teams.microsoft.com/",
+            "id": "user-tab",
+        }
+    ]
+    login = AsyncMock(return_value="authenticated")
+    validate_credentials = AsyncMock(side_effect=[BrowserAuthError("rejected"), None])
+
+    await acquire_browser_auth(
+        client,
+        "work",
+        lambda _: {"refresh_token": "fake"},
+        login=login,
+        async_validate=validate_credentials,
+    )
+
+    client.open_tab.assert_awaited_once()
+    login.assert_awaited_once_with("session", "tab", "node")
+    assert validate_credentials.await_count == 2
+    client.delete_session.assert_not_awaited()
+    client.set_idle_timeout.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -96,7 +221,7 @@ async def test_client_with_live_test_server():
                 {"url": "https://teams.microsoft.com", "local_storage": {"key": "value"}}
             )
         if request.path == "/api/sessions/test-session" and request.method == "GET":
-            return web.json_response({"client_count": 0})
+            return web.json_response({"session": {"client_count": 0}, "targets": []})
         return web.Response(status=204)
 
     app = web.Application()

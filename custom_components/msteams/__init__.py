@@ -15,6 +15,10 @@ from .const import (
     CONF_BROWSER_DAEMON_SECRET,
     CONF_BROWSER_DAEMON_URL,
     CONF_CLIENT_ID,
+    CONF_ENABLE_PUSH,
+    CONF_PREFER_PASSKEY,
+    CONF_RBW_ENTRY_ID,
+    CONF_RBW_ITEM_ID,
     CONF_REFRESH_TOKEN,
     CONF_TENANT_ID,
     CONF_USER_DISPLAY_NAME,
@@ -61,6 +65,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         or entry.options.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
         browser_daemon_secret=entry.data.get(CONF_BROWSER_DAEMON_SECRET)
         or entry.options.get(CONF_BROWSER_DAEMON_SECRET),
+        rbw_entry_id=entry.options.get(CONF_RBW_ENTRY_ID, entry.data.get(CONF_RBW_ENTRY_ID)),
+        rbw_item_id=entry.options.get(CONF_RBW_ITEM_ID, entry.data.get(CONF_RBW_ITEM_ID)),
+        prefer_passkey=entry.options.get(
+            CONF_PREFER_PASSKEY, entry.data.get(CONF_PREFER_PASSKEY, True)
+        ),
     )
 
     client = TeamsApiClient(auth=auth)
@@ -75,7 +84,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Run the initial refresh in the background.
     async def async_start() -> None:
         await coordinator.async_refresh()
-        coordinator.trouter.start()
+        if entry.options.get(CONF_ENABLE_PUSH, True):
+            coordinator.trouter.start()
+        else:
+            _LOGGER.info("Teams push listener disabled; polling remains active")
 
     entry.async_create_background_task(
         hass,

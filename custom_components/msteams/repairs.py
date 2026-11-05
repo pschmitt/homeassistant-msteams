@@ -12,11 +12,14 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import TeamsAuth, TeamsAuthError
+from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_BROWSER_DAEMON_SECRET,
     CONF_BROWSER_DAEMON_URL,
+    CONF_PREFER_PASSKEY,
+    CONF_RBW_ENTRY_ID,
+    CONF_RBW_ITEM_ID,
     DEFAULT_BROWSER_DAEMON_URL,
     DEFAULT_PROFILE,
     DOMAIN,
@@ -58,7 +61,20 @@ class TeamsAuthRepairFlow(RepairsFlow):
                     profile=profile,
                     secret=secret,
                     hass=self.hass,
+                    rbw_entry_id=entry.options.get(
+                        CONF_RBW_ENTRY_ID, entry.data.get(CONF_RBW_ENTRY_ID)
+                    ),
+                    rbw_item_id=entry.options.get(
+                        CONF_RBW_ITEM_ID, entry.data.get(CONF_RBW_ITEM_ID)
+                    ),
+                    prefer_passkey=entry.options.get(
+                        CONF_PREFER_PASSKEY, entry.data.get(CONF_PREFER_PASSKEY, True)
+                    ),
                 )
+                if entry.data.get("user_mri") and not _same_user_mri(
+                    auth.user_mri, entry.data["user_mri"]
+                ):
+                    raise TeamsAuthError("The browser signed in to a different Teams account")
                 # Update config entry with refreshed auth state
                 new_data = {
                     **entry.data,
@@ -69,11 +85,11 @@ class TeamsAuthRepairFlow(RepairsFlow):
                 ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry_id}")
                 await self.hass.config_entries.async_reload(self.entry_id)
                 return self.async_create_entry(title="", data={})
-            except TeamsAuthError as err:
-                _LOGGER.warning("Repair authentication failed: %s", err)
+            except TeamsAuthError:
+                _LOGGER.warning("Teams repair authentication failed")
                 errors["base"] = "auth_failed"
-            except Exception as err:
-                _LOGGER.exception("Unexpected error in Teams repair flow: %s", err)
+            except Exception:
+                _LOGGER.error("Unexpected error in Teams repair flow")
                 errors["base"] = "cannot_connect"
 
         schema = vol.Schema(

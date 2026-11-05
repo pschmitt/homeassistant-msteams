@@ -66,11 +66,19 @@ if "homeassistant" not in sys.modules:
         def _abort_if_unique_id_configured(self):
             pass
 
+        def _get_reconfigure_entry(self):
+            return self.hass.config_entries.async_get_entry(self.context["entry_id"])
+
         def async_create_entry(self, title, data):
             return {"type": "create_entry", "title": title, "data": data}
 
         def async_show_form(self, step_id, data_schema=None, errors=None):
-            return {"type": "form", "step_id": step_id, "errors": errors}
+            return {
+                "type": "form",
+                "step_id": step_id,
+                "data_schema": data_schema,
+                "errors": errors,
+            }
 
         def async_abort(self, reason):
             return {"type": "abort", "reason": reason}
@@ -84,7 +92,12 @@ if "homeassistant" not in sys.modules:
             return {"type": "create_entry", "title": title, "data": data}
 
         def async_show_form(self, step_id, data_schema=None, errors=None):
-            return {"type": "form", "step_id": step_id, "errors": errors}
+            return {
+                "type": "form",
+                "step_id": step_id,
+                "data_schema": data_schema,
+                "errors": errors,
+            }
 
     config_entries.ConfigEntry = ConfigEntry
     config_entries.ConfigFlow = ConfigFlow
