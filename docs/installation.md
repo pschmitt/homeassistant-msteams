@@ -1,13 +1,16 @@
 # Installation
 
-## Home Assistant Marketplace (2026.11 or later)
+Requires Home Assistant 2026.11 or later for conditional configuration fields.
+This minimum applies to every installation method.
+
+## Home Assistant Marketplace
 
 Use the Marketplace badge in the [README](../README.md) to add this repository
 as a custom integration, install **Microsoft Teams**, and restart Home
 Assistant. The badge does not indicate that the integration is in the public
 catalog.
 
-## HACS (older Home Assistant versions)
+## HACS
 
 1. In Home Assistant, open **HACS** and add
    `https://github.com/pschmitt/homeassistant-msteams` as a custom repository.
