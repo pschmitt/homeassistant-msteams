@@ -1,65 +1,49 @@
-# Microsoft Teams for Home Assistant
+<p align="center">
+  <img src="logo.png" width="160" alt="Microsoft Teams for Home Assistant logo">
+</p>
 
-[![CI](https://github.com/pschmitt/homeassistant-msteams/actions/workflows/ci.yaml/badge.svg)](https://github.com/pschmitt/homeassistant-msteams/actions/workflows/ci.yaml)
-[![HACS Default](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+<p align="center">
+  <a href="https://github.com/pschmitt/homeassistant-msteams/actions/workflows/ci.yaml"><img src="https://github.com/pschmitt/homeassistant-msteams/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg" alt="HACS Custom integration"></a>
+</p>
 
-Modern Microsoft Teams custom component for Home Assistant powered by Microsoft Teams private APIs and `browser-daemon` session management.
+<h1 align="center">Microsoft Teams for Home Assistant</h1>
+
+<p align="center">A Home Assistant integration for Teams presence, meetings, chats, notifications, and message actions.</p>
 
 ## Features
 
-- **Sensors**:
-  - `sensor.msteams_presence`: Current user presence (Available, Busy, In a meeting, Away, etc.) and custom status message.
-  - `sensor.msteams_next_meeting`: Upcoming calendar meeting title, start/end time, organizer, and join URL.
-  - `sensor.msteams_unread_chats`: Unread chat conversations count.
-- **Binary Sensors**:
-  - `binary_sensor.msteams_in_a_meeting`: Indicates whether you are currently attending a meeting (from calendar schedule and real-time browser session).
-  - `binary_sensor.msteams_connected`: Diagnostic entity for real-time API connection and token status.
-- **Events**:
-  - `event.msteams_meeting_event`: Lifecycle events (`meeting_started`, `meeting_ended`, `meeting_reminder`) include the meeting ID, title, join URL, description, start/end times, organizer, location, and participants when available. The ended event retains the last known meeting details.
-- **Notifications**:
-  - `notify.msteams`: Sends Markdown notifications to the configured default conversation, or your Teams notes if no default is set. Use `msteams.send_message` to select a conversation per message.
-- **Buttons**:
-  - `button.msteams_refresh_tokens`: Force immediate token refresh.
-- **Services**:
-  - `msteams.send_message`: Send messages to chats or channel threads.
-  - `msteams.reply_message`: Threaded replies to existing messages.
-  - `msteams.add_reaction`: React to messages with emojis (like, heart, laugh, surprised, sad, angry).
-- **Repairs**:
-  - Interactive repair flow in Home Assistant when session credentials expire or reauthorization is needed.
+- **Presence and meetings**: Track presence, unread chats, upcoming meetings, and meeting events. See [Entities](docs/entities.md).
+- **Messages and reactions**: Send notifications, chat messages, replies, and reactions. See [Services](docs/services.md).
+- **Browser based authentication**: Reuse a browser-daemon profile and recover authentication through Home Assistant. See [Authentication](docs/authentication.md).
+- **Polling and push updates**: Configure periodic refreshes and optional real-time update hints. See [Configuration](docs/configuration.md).
 
-## Architecture
+## Install
 
-```mermaid
-flowchart LR
-    HA[Home Assistant] -->|Direct HTTP / Token Refresh| Azure[Azure AD & Teams Private APIs]
-    HA -->|Session Storage Export| BD[browser-daemon]
-    BD -->|Signed-in profile| TeamsWeb[Microsoft Teams Web]
-```
+- **HACS**: Add this repository as a custom repository with category **Integration**, install it, and restart Home Assistant.
+- **Manual**: Copy `custom_components/msteams` from this repository into the Home Assistant configuration directory at `custom_components/msteams`. Then restart Home Assistant.
 
-1. **Initial Authentication**: Credentials and MSAL refresh tokens are extracted directly from a signed-in `browser-daemon` profile (e.g. `work`).
-2. **Token Lifecycle**: Access tokens are refreshed via fast, direct HTTP requests to Azure AD without opening browser windows.
-3. **Live updates**: An independent Teams push connection triggers refreshes for chat and call events. Periodic polling remains enabled for presence, calendar changes, and missed events.
+See [Installation](docs/installation.md) for details.
 
-## Installation
+## Quick start
 
-### Via HACS
-1. Open HACS in Home Assistant.
-2. Add `https://github.com/pschmitt/homeassistant-msteams` as a custom repository (Category: Integration).
-3. Install and restart Home Assistant.
+1. Set up the browser-daemon integration in Home Assistant and sign in to a dedicated Teams profile.
+2. Go to **Settings** → **Devices & Services** → **Add Integration** and select **Microsoft Teams**.
+3. Choose browser-daemon authentication, select the profile, and optionally configure an rbw integration and item.
+4. Complete any Microsoft sign-in prompt in the browser-daemon profile, then check the new Teams entities.
 
-### Declarative / Local Submodule
-Clone or submodule into `custom_components/msteams`:
-```sh
-ln -s ../custom_components-local/homeassistant-msteams/custom_components/msteams /config/custom_components/msteams
-```
+## Documentation
 
-## Configuration
-
-1. Go to **Settings** → **Devices & Services** → **Add Integration**.
-2. Search for **Microsoft Teams**.
-3. Enter your `browser-daemon` node URL (e.g. `https://browser.rofl-14.netbird.cloud`) and profile name (`work`).
-4. Home Assistant extracts your credentials, discovers your account, and registers all devices and entities.
+| Topic | Description |
+| --- | --- |
+| [Installation](docs/installation.md) | HACS and manual installation instructions. |
+| [Configuration](docs/configuration.md) | Add, reconfigure, and adjust integration options. |
+| [Authentication](docs/authentication.md) | Browser-daemon, rbw, token refresh, and account safety. |
+| [Entities](docs/entities.md) | Sensors, binary sensors, meeting events, and diagnostic entities. |
+| [Services](docs/services.md) | Message, reply, reaction, and notification actions. |
+| [Architecture](docs/architecture.md) | Data updates, push connections, and token lifecycle. |
+| [Troubleshooting](docs/troubleshooting.md) | Safe checks for common setup and authentication problems. |
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
