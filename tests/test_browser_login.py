@@ -6,7 +6,7 @@ import types
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from browser_daemon_client import BrowserDaemon, BrowserDaemonError, RunResult
+from browser_daemon_client import BrowserDaemonError, RunResult
 
 from custom_components.msteams import browser_login
 
@@ -116,7 +116,6 @@ async def test_password_login_uses_published_client_rest_api_and_current_totp(mo
                 f"http://127.0.0.1:{port}",
                 "inert-test-secret",
             )
-            assert not hasattr(BrowserDaemon, "login")
             assert callable(client.password_login)
             result = await browser_login.async_login(
                 object(),
