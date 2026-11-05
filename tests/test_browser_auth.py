@@ -56,6 +56,48 @@ def client_with_session(*, owned=False):
 
 
 @pytest.mark.asyncio
+async def test_group_placement_precedes_fresh_inventory():
+    client = client_with_session()
+    calls = []
+
+    async def place(*args, **kwargs):
+        calls.append("placement")
+        return {"node": "node"}
+
+    async def overview():
+        calls.append("overview")
+        return {
+            "profiles": [{"name": "work", "node_name": "node", "session_id": "session"}],
+            "targets": [],
+        }
+
+    client._json.side_effect = place
+    client.overview.side_effect = overview
+    await acquire_browser_auth(
+        client, "work", lambda _: {"refresh_token": "fake"}, node_group=" cloud "
+    )
+    assert calls[:2] == ["placement", "overview"]
+    client._json.assert_any_await(
+        "POST",
+        "/api/mesh/placement",
+        json={"profile": "work", "group": "cloud", "engine": "chromium", "create": True},
+        timeout=180,
+    )
+
+
+@pytest.mark.asyncio
+async def test_failed_group_placement_never_falls_back():
+    client = client_with_session()
+    client._json.side_effect = BrowserDaemonError("no matching node")
+    with pytest.raises(BrowserAuthError):
+        await acquire_browser_auth(client, "work", lambda _: {}, node_group="cloud")
+    client.overview.assert_not_awaited()
+    client.create_session.assert_not_awaited()
+    client.open_tab.assert_not_awaited()
+    client.export_auth.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_new_tab_storage_can_populate_without_login(readiness_clock):
     client = client_with_session(owned=True)
     client.export_auth.side_effect = [
@@ -243,10 +285,27 @@ async def test_attached_session_timeout_is_not_lowered_for_login():
 
 
 @pytest.mark.asyncio
-async def test_missing_profile_fails_without_creating_session():
+@pytest.mark.parametrize("profile", ["ha-msteams", ""])
+async def test_first_use_creates_named_or_throwaway_session(profile):
     client = client_with_session()
+    await acquire_browser_auth(client, profile, lambda _: {"refresh_token": "fake"})
+    client.create_session.assert_awaited_once_with(
+        profile=profile or None,
+        persistent=bool(profile),
+        engine="chromium",
+        default_tabs=False,
+        node=None,
+        idle_timeout_minutes=5,
+    )
+    client.delete_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_profile_is_refused():
+    client = client_with_session()
+    client.overview.return_value["profiles"] *= 2
     with pytest.raises(BrowserAuthError):
-        await acquire_browser_auth(client, "absent", lambda _: {})
+        await acquire_browser_auth(client, "work", lambda _: {})
     client.create_session.assert_not_awaited()
 
 
@@ -275,6 +334,8 @@ async def test_client_with_live_test_server():
                     "targets": [],
                 }
             )
+        if request.path == "/api/mesh/placement":
+            return web.json_response({"node": "node", "profile": "work"})
         if request.path == "/api/sessions" and request.method == "POST":
             payload = await request.json()
             assert payload["idle_timeout_minutes"] == 5

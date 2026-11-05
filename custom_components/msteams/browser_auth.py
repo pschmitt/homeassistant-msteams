@@ -45,26 +45,41 @@ async def acquire_browser_auth(
     validate: Callable[[dict[str, Any]], dict[str, Any]],
     login: Callable[[str, str, str | None], Awaitable[str]] | None = None,
     async_validate: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    node_group: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Acquire auth state via a browser-daemon client and release owned resources."""
-    # 1. Fetch overview
+    profile = profile.strip()
+    placement = {}
     try:
+        if node_group and node_group.strip():
+            placement = await bd_client._json(
+                "POST",
+                "/api/mesh/placement",
+                json={
+                    "profile": profile or None,
+                    "group": node_group.strip(),
+                    "engine": "chromium",
+                    "create": True,
+                },
+                timeout=180,
+            )
         overview = await bd_client.overview()
     except BrowserDaemonError:
         raise BrowserAuthError("Failed to connect to browser-daemon") from None
 
-    prof = next((p for p in overview.get("profiles", []) if p.get("name") == profile), None)
-    if not prof:
-        raise BrowserAuthError("browser-daemon does not have the configured profile")
-
-    node_name = prof.get("node_name")
+    profiles = [p for p in overview.get("profiles", []) if profile and p.get("name") == profile]
+    if len(profiles) > 1:
+        raise BrowserAuthError("browser-daemon has duplicate copies of the configured profile")
+    prof = profiles[0] if profiles else {}
+    node_name = prof.get("node_name") or placement.get("node")
     session_id = prof.get("session_id")
     created_session_id: str | None = None
 
     if not session_id:
         try:
             session_info = await bd_client.create_session(
-                profile=profile,
+                profile=profile or None,
+                persistent=bool(profile),
                 engine="chromium",
                 default_tabs=False,
                 node=node_name,

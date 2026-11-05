@@ -234,12 +234,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "probatio" },
     { name = "voluptuous" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "probatio" },
     { name = "voluptuous", specifier = ">=0.13.0" },
 ]
 
@@ -368,6 +370,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/00/2f/45eb8700ee15716cc22f5b42592b4d5bc1ca65c880179c2c10e42fd6f0b4/multidict-7.2.1-cp315-cp315t-win_amd64.whl", hash = "sha256:25ebc4208d9098f77caeb16df895a0e56eb6c3b22870ac4e3ec43e0a9d6a33b6", size = 101193, upload-time = "2026-10-24T20:41:34.124Z" },
     { url = "https://files.pythonhosted.org/packages/7b/80/37d26f26d20b937344cfd68d9a1f57d8bc4f64adae416fc6828a7f8c8a10/multidict-7.2.1-cp315-cp315t-win_arm64.whl", hash = "sha256:4d61be3725016ef5db3543c95f1f062d7d150ba776582d959a982af88e75fa55", size = 98863, upload-time = "2026-10-24T20:40:59.146Z" },
     { url = "https://files.pythonhosted.org/packages/9d/96/1aaad0e5df33f1f5af21775c411349c0234a6edd581ea403bc81919a6eab/multidict-7.2.1-py3-none-any.whl", hash = "sha256:08ea94663d9e7c25d14d78222f7aee906c472d4837766bec62477c38f6e419dc", size = 28145, upload-time = "2026-10-24T20:40:59.159Z" },
+]
+
+[[package]]
+name = "probatio"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/0d/866a5d14b2deb3a9e93121ec8caeae0f3883cda575218da1a6b46dd6223f/probatio-0.13.0.tar.gz", hash = "sha256:b5941dfdb68d813fbe49551d8802b241c4774f756fe51dfdedbad33e27797373", size = 405374, upload-time = "2026-10-02T09:57:43.616Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/ab/8d3eb6004bec5ec8938baac7b251eed8954a5cdbfe9e342072634494a631/probatio-0.13.0-py3-none-any.whl", hash = "sha256:b592d11c89b536fa42617c3f23fb8798aeb659da2113cc2ec1ff8759f8a34d8a", size = 238295, upload-time = "2026-10-02T09:57:40.897Z" },
 ]
 
 [[package]]

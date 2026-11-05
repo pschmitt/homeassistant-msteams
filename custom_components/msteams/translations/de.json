@@ -6,7 +6,8 @@
         "description": "Automatisch über Browser Daemon authentifizieren oder eine Anmeldedatei bzw. ein OAuth-Refresh-Token angeben.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_profile": "Browser Daemon Profilname",
+          "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
+          "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
           "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
@@ -22,7 +23,8 @@
         "description": "Authentifizierungs-Token über Browser Daemon neu laden oder aktualisierte Anmeldedaten angeben.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_profile": "Browser Daemon Profilname",
+          "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
+          "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
           "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
@@ -36,7 +38,8 @@
         "description": "Aktualisiere die Authentifizierungseinstellungen dieses Teams-Kontos. Melde dich erneut an, um die Änderungen zu speichern.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_profile": "Browser Daemon Profilname",
+          "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
+          "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
           "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
@@ -83,11 +86,15 @@
         "step": {
           "reauth": {
             "title": "Teams neu anmelden",
-            "description": "Die Anmeldung wird über das konfigurierte Browser-Daemon-Profil und rbw-Konto erneut versucht. Wenn Microsoft MFA, eine Zustimmung, eine Passwortänderung oder einen anderen manuellen Schritt verlangt, öffne dieses Profil im Browser-Daemon-Dashboard, schließe den Schritt ab und versuche es hier erneut. Die Anmeldeseite bleibt 15 Minuten geöffnet.",
+            "description": "Versuche die konfigurierte Anmeldemethode erneut. Gib bei Datei- oder Token-Anmeldung eine aktualisierte Anmeldedatei oder ein neues Refresh-Token an. Die Browser-Anmeldung verwendet das konfigurierte Profil und optional rbw. Schließe manuelle Microsoft-Abfragen in diesem Profil ab und versuche es erneut. Offene Anmeldeseiten bleiben 15 Minuten erhalten.",
             "data": {
               "browser_daemon_url": "Browser daemon URL",
-              "browser_daemon_profile": "Browser profile",
-              "browser_daemon_secret": "Cluster secret"
+              "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
+              "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
+              "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichert beibehalten)",
+              "credentials_file": "Pfad zur Anmeldedatei",
+              "refresh_token": "OAuth-Refresh-Token",
+              "tenant_id": "Mandanten-ID"
             }
           }
         },

@@ -111,6 +111,14 @@ if "homeassistant" not in sys.modules:
     class AbortFlow(Exception):
         pass
 
+    import probatio
+
+    class Optional(probatio.Optional):
+        def __init__(self, *args, visible=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.visible = visible
+
+    data_entry_flow.Optional = Optional
     data_entry_flow.AbortFlow = AbortFlow
     data_entry_flow.FlowResult = dict
     sys.modules["homeassistant.data_entry_flow"] = data_entry_flow

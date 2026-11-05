@@ -30,4 +30,4 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
-      - run: uvx --with aiohttp --with voluptuous --with pytest --with pytest-asyncio --with browser-daemon-client pytest
+      - run: uvx --with aiohttp --with voluptuous --with probatio --with pytest --with pytest-asyncio --with browser-daemon-client pytest

@@ -11,6 +11,7 @@ import pytest
 from custom_components.msteams.api import TeamsAuthError
 from custom_components.msteams.config_flow import TeamsConfigFlow, TeamsOptionsFlow
 from custom_components.msteams.const import (
+    CONF_BROWSER_DAEMON_NODE_GROUP,
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
@@ -24,6 +25,30 @@ from custom_components.msteams.const import (
     CONF_USE_BROWSER_DAEMON,
     CONF_USER_MRI,
 )
+
+
+@pytest.mark.asyncio
+async def test_browser_fields_have_native_visibility_and_named_default():
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config.components = {"browser_daemon"}
+    flow.hass.config_entries.async_entries.return_value = []
+    result = await flow.async_step_user()
+    markers = {key.schema: key for key in result["data_schema"].schema}
+    assert markers[CONF_BROWSER_DAEMON_PROFILE].default() == "ha-msteams"
+    assert markers[CONF_BROWSER_DAEMON_PROFILE].visible == {
+        "field": CONF_USE_BROWSER_DAEMON,
+        "value": True,
+    }
+    assert markers[CONF_CREDENTIALS_FILE].visible == {
+        "field": CONF_USE_BROWSER_DAEMON,
+        "operator": "not_eq",
+        "value": True,
+    }
+    assert markers[CONF_RBW_ITEM_ID].visible == [
+        {"field": CONF_USE_BROWSER_DAEMON, "value": True},
+        {"field": CONF_RBW_ENTRY_ID, "operator": "not_eq", "value": ""},
+    ]
 
 
 @pytest.mark.asyncio
@@ -50,8 +75,9 @@ async def test_config_flow_manual_success():
     assert result["data"]["refresh_token"] == "valid_token_123"
 
 
+@pytest.mark.parametrize("rbw", [{}, {CONF_RBW_ENTRY_ID: "unused-vault"}])
 @pytest.mark.asyncio
-async def test_config_flow_credentials_file_success():
+async def test_config_flow_credentials_file_success(rbw):
     """Test successful configuration via credentials file."""
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
@@ -79,12 +105,15 @@ async def test_config_flow_credentials_file_success():
         result = await flow.async_step_user(
             {
                 CONF_CREDENTIALS_FILE: "/tmp/fake_creds.json",
+                CONF_USE_BROWSER_DAEMON: False,
+                **rbw,
             }
         )
 
     assert result["type"] == "create_entry"
     assert result["title"] == "Alice Smith"
     assert result["data"]["refresh_token"] == "token123"
+    assert result["data"][CONF_USE_BROWSER_DAEMON] is False
 
 
 @pytest.mark.asyncio
@@ -149,6 +178,7 @@ async def test_reauth_persists_submitted_rbw_settings_to_options(returned_prefix
     user_input = {
         CONF_USE_BROWSER_DAEMON: True,
         CONF_BROWSER_DAEMON_PROFILE: "work",
+        CONF_BROWSER_DAEMON_NODE_GROUP: "cloud",
         CONF_RBW_ENTRY_ID: "new_entry",
         CONF_RBW_ITEM_ID: "new_item",
         CONF_PREFER_PASSKEY: False,
@@ -170,6 +200,7 @@ async def test_reauth_persists_submitted_rbw_settings_to_options(returned_prefix
     auth_from_browser.assert_awaited_once_with(
         session=auth_from_browser.await_args.kwargs["session"],
         profile="work",
+        node_group="cloud",
         hass=flow.hass,
         rbw_entry_id="new_entry",
         rbw_item_id="new_item",
@@ -232,7 +263,9 @@ async def test_reauth_incomplete_rbw_pair_keeps_submitted_value():
     flow.hass.config.components = set()
     flow.hass.data = {}
 
-    result = await flow.async_step_reauth_confirm({CONF_RBW_ITEM_ID: "entered_item"})
+    result = await flow.async_step_reauth_confirm(
+        {CONF_RBW_ITEM_ID: "entered_item", CONF_USE_BROWSER_DAEMON: True}
+    )
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": "rbw_incomplete"}
@@ -248,7 +281,9 @@ async def test_config_incomplete_rbw_pair_keeps_submitted_value():
     flow.hass.config.components = set()
     flow.hass.data = {}
 
-    result = await flow.async_step_user({CONF_RBW_ITEM_ID: "entered_item"})
+    result = await flow.async_step_user(
+        {CONF_RBW_ITEM_ID: "entered_item", CONF_USE_BROWSER_DAEMON: True}
+    )
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": "rbw_incomplete"}
@@ -267,7 +302,9 @@ async def test_options_incomplete_rbw_pair_keeps_submitted_value():
     options_flow.hass = MagicMock()
     options_flow.hass.config_entries.async_get_known_entry.return_value = entry
 
-    result = await options_flow.async_step_init({CONF_RBW_ITEM_ID: "entered_item"})
+    result = await options_flow.async_step_init(
+        {CONF_RBW_ITEM_ID: "entered_item", CONF_USE_BROWSER_DAEMON: True}
+    )
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": "rbw_incomplete"}
@@ -498,12 +535,14 @@ async def test_reconfigure_rejects_half_rbw_pair_from_effective_settings():
     entry.options = {CONF_RBW_ENTRY_ID: "rbw_entry", CONF_RBW_ITEM_ID: "rbw_item"}
     flow = reconfigure_setup(entry)
 
-    result = await flow.async_step_reconfigure({CONF_RBW_ENTRY_ID: ""})
+    result = await flow.async_step_reconfigure(
+        {CONF_RBW_ITEM_ID: "", CONF_USE_BROWSER_DAEMON: True}
+    )
 
     defaults = result["data_schema"]({})
     assert result["errors"] == {"base": "rbw_incomplete"}
-    assert defaults[CONF_RBW_ENTRY_ID] == ""
-    assert defaults[CONF_RBW_ITEM_ID] == "rbw_item"
+    assert defaults[CONF_RBW_ENTRY_ID] == "rbw_entry"
+    assert defaults[CONF_RBW_ITEM_ID] == ""
     flow.hass.config_entries.async_update_entry.assert_not_called()
 
 
@@ -556,6 +595,42 @@ async def test_reconfigure_clears_rbw_pair_and_keeps_omitted_options():
         CONF_DEFAULT_CONVERSATION_ID: "existing_chat",
     }
     flow.hass.config_entries.async_reload.assert_awaited_once_with("existing_entry")
+
+
+@pytest.mark.asyncio
+async def test_file_reconfigure_does_not_enable_installed_browser_integration():
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {
+        CONF_USER_MRI: "8:orgid:alice",
+        CONF_BROWSER_DAEMON_PROFILE: "unused_profile",
+        CONF_CREDENTIALS_FILE: "/tmp/fake_creds.json",
+        CONF_RBW_ENTRY_ID: "unused_vault",
+    }
+    entry.options = {}
+    flow = reconfigure_setup(entry)
+    flow.hass.config.components = {"browser_daemon"}
+    form = await flow.async_step_reconfigure()
+    assert form["data_schema"]({})[CONF_USE_BROWSER_DAEMON] is False
+    auth = MagicMock()
+    auth.user_mri = "8:orgid:alice"
+    auth.export_data.return_value = {CONF_USER_MRI: auth.user_mri}
+    with (
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_credentials",
+            new=AsyncMock(return_value=auth),
+        ) as from_file,
+        patch(
+            "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+            new=AsyncMock(),
+        ) as from_browser,
+    ):
+        result = await flow.async_step_reconfigure({})
+    assert result["reason"] == "reconfigure_successful"
+    from_file.assert_awaited_once()
+    from_browser.assert_not_awaited()
+    update = flow.hass.config_entries.async_update_entry.call_args.kwargs
+    assert update["data"][CONF_USE_BROWSER_DAEMON] is False
 
 
 @pytest.mark.parametrize("language", ["en", "de"])

@@ -8,6 +8,7 @@ license = "GPL-3.0-or-later"
 dependencies = [
     "aiohttp>=3.9.0",
     "voluptuous>=0.13.0",
+    "probatio",
 ]
 
 [tool.pytest.ini_options]

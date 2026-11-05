@@ -6,7 +6,8 @@
         "description": "Authenticate automatically using Browser Daemon, or provide a credentials file or OAuth refresh token.",
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_profile": "Browser Daemon Profile",
+          "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
+          "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
           "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
@@ -22,7 +23,8 @@
         "description": "Re-acquire authentication tokens from Browser Daemon or provide updated credentials.",
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_profile": "Browser Daemon Profile",
+          "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
+          "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
           "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
@@ -36,7 +38,8 @@
         "description": "Update the authentication settings for this Teams account. Sign in again to save the changes.",
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_profile": "Browser Daemon Profile",
+          "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
+          "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
           "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
@@ -83,11 +86,15 @@
         "step": {
           "reauth": {
             "title": "Sign in to Teams again",
-            "description": "Retries sign-in through the configured browser-daemon profile and rbw account. If Microsoft requires MFA, consent, a password change or another interactive step, open that profile in the browser-daemon dashboard, complete the step, then retry here. The pending login page is kept for 15 minutes.",
+            "description": "Retry the configured authentication method. For file or token authentication, provide an updated credentials file or fresh refresh token. Browser authentication uses the configured profile and optional rbw account. Complete any interactive Microsoft challenge in that profile, then retry. Pending browser login pages are kept for 15 minutes.",
             "data": {
               "browser_daemon_url": "Browser daemon URL",
-              "browser_daemon_profile": "Browser profile",
-              "browser_daemon_secret": "Cluster secret"
+              "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
+              "browser_daemon_node_group": "Browser Daemon node group (optional)",
+              "browser_daemon_secret": "Cluster secret (blank: keep saved)",
+              "credentials_file": "Credentials file path",
+              "refresh_token": "OAuth refresh token",
+              "tenant_id": "Tenant ID"
             }
           }
         },

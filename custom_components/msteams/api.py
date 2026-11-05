@@ -150,6 +150,8 @@ class TeamsAuth:
         browser_daemon_url: str | None = None,
         browser_daemon_profile: str = DEFAULT_PROFILE,
         browser_daemon_secret: str | None = None,
+        browser_daemon_node_group: str | None = None,
+        use_browser_daemon: bool = True,
         rbw_entry_id: str | None = None,
         rbw_item_id: str | None = None,
         prefer_passkey: bool = True,
@@ -166,6 +168,8 @@ class TeamsAuth:
         self.browser_daemon_url = browser_daemon_url
         self.browser_daemon_profile = browser_daemon_profile
         self.browser_daemon_secret = browser_daemon_secret
+        self.browser_daemon_node_group = browser_daemon_node_group
+        self.use_browser_daemon = use_browser_daemon
         self._is_recovering = False
         self.rbw_entry_id = rbw_entry_id
         self.rbw_item_id = rbw_item_id
@@ -200,7 +204,11 @@ class TeamsAuth:
 
     async def _async_recover_via_browser_daemon(self) -> bool:
         """Attempt to restore authentication state via browser-daemon."""
-        if self._is_recovering or time.monotonic() < self._browser_retry_at:
+        if (
+            not self.use_browser_daemon
+            or self._is_recovering
+            or time.monotonic() < self._browser_retry_at
+        ):
             return False
         if not self.hass and not self.browser_daemon_url:
             return False
@@ -211,6 +219,7 @@ class TeamsAuth:
                 session=self.session,
                 browser_daemon_url=self.browser_daemon_url,
                 profile=self.browser_daemon_profile,
+                node_group=self.browser_daemon_node_group,
                 secret=self.browser_daemon_secret,
                 hass=self.hass,
                 rbw_entry_id=self.rbw_entry_id,
@@ -473,6 +482,7 @@ class TeamsAuth:
         rbw_entry_id: str | None = None,
         rbw_item_id: str | None = None,
         prefer_passkey: bool = True,
+        node_group: str | None = None,
     ) -> TeamsAuth:
         """Acquire credentials automatically via browser-daemon."""
         url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
@@ -544,6 +554,7 @@ class TeamsAuth:
                 cls.parse_credentials,
                 login=login if hass is not None and rbw_entry_id and rbw_item_id else None,
                 async_validate=validate_credentials,
+                node_group=node_group,
             )
         except BrowserAuthError:
             raise TeamsAuthError(
@@ -555,6 +566,7 @@ class TeamsAuth:
         auth.hass = hass
         auth.browser_daemon_url = browser_daemon_url
         auth.browser_daemon_profile = profile
+        auth.browser_daemon_node_group = node_group
         auth.browser_daemon_secret = secret
         auth.rbw_entry_id = rbw_entry_id
         auth.rbw_item_id = rbw_item_id

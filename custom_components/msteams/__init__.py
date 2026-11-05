@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import TeamsApiClient, TeamsAuth
 from .const import (
+    CONF_BROWSER_DAEMON_NODE_GROUP,
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_BROWSER_DAEMON_SECRET,
     CONF_BROWSER_DAEMON_URL,
@@ -21,6 +22,7 @@ from .const import (
     CONF_RBW_ITEM_ID,
     CONF_REFRESH_TOKEN,
     CONF_TENANT_ID,
+    CONF_USE_BROWSER_DAEMON,
     CONF_USER_DISPLAY_NAME,
     CONF_USER_EMAIL,
     CONF_USER_MRI,
@@ -61,10 +63,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass=hass,
         browser_daemon_url=entry.data.get(CONF_BROWSER_DAEMON_URL)
         or entry.options.get(CONF_BROWSER_DAEMON_URL),
-        browser_daemon_profile=entry.data.get(CONF_BROWSER_DAEMON_PROFILE)
-        or entry.options.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
+        browser_daemon_profile=entry.options.get(
+            CONF_BROWSER_DAEMON_PROFILE,
+            entry.data.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
+        ),
         browser_daemon_secret=entry.data.get(CONF_BROWSER_DAEMON_SECRET)
         or entry.options.get(CONF_BROWSER_DAEMON_SECRET),
+        browser_daemon_node_group=entry.options.get(
+            CONF_BROWSER_DAEMON_NODE_GROUP, entry.data.get(CONF_BROWSER_DAEMON_NODE_GROUP)
+        ),
+        use_browser_daemon=entry.options.get(
+            CONF_USE_BROWSER_DAEMON, entry.data.get(CONF_USE_BROWSER_DAEMON, False)
+        ),
         rbw_entry_id=entry.options.get(CONF_RBW_ENTRY_ID, entry.data.get(CONF_RBW_ENTRY_ID)),
         rbw_item_id=entry.options.get(CONF_RBW_ITEM_ID, entry.data.get(CONF_RBW_ITEM_ID)),
         prefer_passkey=entry.options.get(

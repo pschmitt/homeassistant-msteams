@@ -223,6 +223,20 @@ async def test_api_send_message():
 
 
 @pytest.mark.asyncio
+async def test_disabled_browser_recovery_never_contacts_browser_daemon():
+    auth = TeamsAuth(
+        session=MagicMock(),
+        refresh_token="file-imported",
+        browser_daemon_url="https://browser.example.com",
+        use_browser_daemon=False,
+        hass=MagicMock(),
+    )
+    auth.async_from_browser_daemon = AsyncMock()
+    assert await auth._async_recover_via_browser_daemon() is False
+    auth.async_from_browser_daemon.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_auth_self_recovery_on_refresh_failure():
     """Verify that a rejected HTTP refresh automatically invokes browser-daemon recovery."""
     mock_session = MagicMock()
@@ -332,7 +346,9 @@ async def test_browser_auth_retries_rejected_credentials_once(monkeypatch, caplo
     login = AsyncMock(return_value=("authenticated", "user@example.com"))
     calls = []
 
-    async def acquire(_client, _profile, _parse, *, login=None, async_validate=None):
+    async def acquire(
+        _client, _profile, _parse, *, login=None, async_validate=None, node_group=None
+    ):
         calls.append("acquire")
         with pytest.raises(TeamsAuthError):
             await async_validate(credentials)
@@ -383,7 +399,9 @@ async def test_browser_auth_rejects_selected_account_mismatch(monkeypatch):
     }
     login = AsyncMock(return_value=("authenticated", "expected@example.com"))
 
-    async def acquire(_client, _profile, _parse, *, login=None, async_validate=None):
+    async def acquire(
+        _client, _profile, _parse, *, login=None, async_validate=None, node_group=None
+    ):
         await login("session", "tab", "node")
         try:
             await async_validate(credentials)

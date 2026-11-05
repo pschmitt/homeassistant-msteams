@@ -1,18 +1,45 @@
 # Authentication
 
+These configuration forms require Home Assistant 2026.11 or later. Fields
+follow the selected authentication method: file/token fields appear without
+browser authentication, and vault details appear only when rbw is selected.
+
+## Choose a credential source
+
+Browser-daemon and rbw are optional. To use a credentials file, disable **Use
+Browser Daemon** and provide its path in Home Assistant's filesystem. You can
+also supply a refresh token directly. Installing the browser-daemon integration
+does not change an existing file-based account into a browser-based account.
+With browser authentication disabled, expired credentials require importing a
+fresh file or token through **Reconfigure**; browser recovery is not attempted.
+
+With browser authentication enabled, leave both rbw fields empty to reuse an
+already signed-in browser profile and complete interactive sign-in yourself.
+Select both rbw fields only when you want automated credential recovery.
+
 ## Browser-daemon profile
 
 The integration uses the configured Home Assistant browser-daemon connection
 when it is available, including its connection details. It opens or reuses a
 Teams page in the selected browser-daemon profile and exports the Teams
-authentication state to validate it. Choose a dedicated profile that is signed
-into the intended Microsoft account. A profile signed into another account
-will not be accepted for an existing integration entry.
+authentication state to validate it. New setups default to `ha-msteams`, which
+the integration creates on first use. Existing configured profile names remain
+unchanged. Clear the profile field to use a throwaway browser instead; its
+cookies are not retained after the session ends. A profile signed into another
+account will not be accepted for an existing integration entry.
 
 The integration compares the authenticated Teams account's stable identity
 with the account already configured. Initial setup and native **Reconfigure**
 both validate the resulting account before saving. Reconfigure rejects a
 different account.
+
+The optional **Browser Daemon node group** restricts authentication to nodes in
+that group. An idle profile on another node is transferred without overwriting
+another copy. Active profiles that would need to move, duplicate copies,
+incomplete inventory, or a group without available capacity produce an error;
+there is no fallback to an unmatched node. An active profile already on an
+eligible node can be reused. Leave the field empty to remove the restriction. Group placement
+requires a browser-daemon version serving `POST /api/mesh/placement`.
 
 ## rbw credentials and passkeys
 

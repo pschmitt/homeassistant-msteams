@@ -16,6 +16,7 @@ CONF_RBW_ITEM_ID = "rbw_item_id"
 CONF_PREFER_PASSKEY = "prefer_passkey"
 CONF_BROWSER_DAEMON_URL = "browser_daemon_url"
 CONF_BROWSER_DAEMON_PROFILE = "browser_daemon_profile"
+CONF_BROWSER_DAEMON_NODE_GROUP = "browser_daemon_node_group"
 CONF_BROWSER_DAEMON_SECRET = "browser_daemon_secret"
 
 # Auth methods
@@ -33,7 +34,7 @@ CONF_USER_DISPLAY_NAME = "user_display_name"
 CONF_USER_EMAIL = "user_email"
 
 # Defaults
-DEFAULT_PROFILE = "work"
+DEFAULT_PROFILE = "ha-msteams"
 DEFAULT_BROWSER_DAEMON_URL = "https://browser.fnuc.ts.brkn.lol"
 DEFAULT_POLL_INTERVAL = 30
 DEFAULT_REGION = "emea"

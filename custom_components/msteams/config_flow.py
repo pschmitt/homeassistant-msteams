@@ -5,14 +5,15 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import voluptuous as vol
-from homeassistant import config_entries
+import probatio as vol
+from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
+    CONF_BROWSER_DAEMON_NODE_GROUP,
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
@@ -34,17 +35,35 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def rbw_schema(hass: Any, defaults: dict[str, Any]) -> dict[Any, Any]:
+def rbw_schema(
+    hass: Any, defaults: dict[str, Any], *, browser_only: bool = False
+) -> dict[Any, Any]:
+    browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
+    selected = {"field": CONF_RBW_ENTRY_ID, "operator": "not_eq", "value": ""}
+    enabled = browser_only or defaults.get(CONF_USE_BROWSER_DAEMON, False)
+    details = ([browser, selected] if browser_only else [selected]) if enabled else False
     entries = {"": "Disabled"}
     entries.update(
         {entry.entry_id: entry.title for entry in hass.config_entries.async_entries("rbw")}
     )
+    if saved_entry := defaults.get(CONF_RBW_ENTRY_ID):
+        entries.setdefault(saved_entry, "Unavailable integration")
     return {
-        vol.Optional(CONF_RBW_ENTRY_ID, default=defaults.get(CONF_RBW_ENTRY_ID, "")): vol.In(
-            entries
-        ),
-        vol.Optional(CONF_RBW_ITEM_ID, default=defaults.get(CONF_RBW_ITEM_ID, "")): str,
-        vol.Optional(CONF_PREFER_PASSKEY, default=defaults.get(CONF_PREFER_PASSKEY, True)): bool,
+        data_entry_flow.Optional(
+            CONF_RBW_ENTRY_ID,
+            default=defaults.get(CONF_RBW_ENTRY_ID, ""),
+            visible=browser if browser_only else defaults.get(CONF_USE_BROWSER_DAEMON, False),
+        ): vol.In(entries),
+        data_entry_flow.Optional(
+            CONF_RBW_ITEM_ID,
+            default=defaults.get(CONF_RBW_ITEM_ID, ""),
+            visible=details,
+        ): str,
+        data_entry_flow.Optional(
+            CONF_PREFER_PASSKEY,
+            default=defaults.get(CONF_PREFER_PASSKEY, True),
+            visible=details,
+        ): bool,
     }
 
 
@@ -67,9 +86,14 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.hass.data.get("browser_daemon")
         )
 
-        if user_input is not None and not rbw_config_valid(user_input):
+        if user_input is not None and user_input.get(CONF_RBW_ENTRY_ID) == "":
+            user_input = {**user_input, CONF_RBW_ITEM_ID: ""}
+        rbw_valid = not (user_input or {}).get(CONF_USE_BROWSER_DAEMON) or rbw_config_valid(
+            user_input or {}
+        )
+        if user_input is not None and not rbw_valid:
             errors["base"] = "rbw_incomplete"
-        if user_input is not None and rbw_config_valid(user_input):
+        if user_input is not None and rbw_valid:
             session = async_get_clientsession(self.hass)
             use_browser_daemon = user_input.get(CONF_USE_BROWSER_DAEMON, False)
             creds_file = user_input.get(CONF_CREDENTIALS_FILE)
@@ -82,6 +106,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
                         profile=profile,
+                        node_group=user_input.get(CONF_BROWSER_DAEMON_NODE_GROUP),
                         hass=self.hass,
                         rbw_entry_id=user_input.get(CONF_RBW_ENTRY_ID),
                         rbw_item_id=user_input.get(CONF_RBW_ITEM_ID),
@@ -122,6 +147,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     entry_data = {
                         **user_input,
                         **auth.export_data(),
+                        CONF_USE_BROWSER_DAEMON: use_browser_daemon,
                     }
                     return self.async_create_entry(title=title, data=entry_data)
 
@@ -137,14 +163,30 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema_dict: dict[Any, Any] = {}
         if has_browser_daemon:
             schema_dict[vol.Optional(CONF_USE_BROWSER_DAEMON, default=True)] = bool
-            schema_dict[vol.Optional(CONF_BROWSER_DAEMON_PROFILE, default=DEFAULT_PROFILE)] = str
+            schema_dict[
+                data_entry_flow.Optional(
+                    CONF_BROWSER_DAEMON_PROFILE,
+                    default=DEFAULT_PROFILE,
+                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+                )
+            ] = str
+            schema_dict[
+                data_entry_flow.Optional(
+                    CONF_BROWSER_DAEMON_NODE_GROUP,
+                    default="",
+                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+                )
+            ] = str
 
-        schema_dict[vol.Optional(CONF_CREDENTIALS_FILE)] = str
-        schema_dict[vol.Optional(CONF_REFRESH_TOKEN)] = str
-        schema_dict[vol.Optional(CONF_TENANT_ID, default="common")] = str
+        file_mode = {"field": CONF_USE_BROWSER_DAEMON, "operator": "not_eq", "value": True}
+        schema_dict[data_entry_flow.Optional(CONF_CREDENTIALS_FILE, visible=file_mode)] = str
+        schema_dict[data_entry_flow.Optional(CONF_REFRESH_TOKEN, visible=file_mode)] = str
+        schema_dict[
+            data_entry_flow.Optional(CONF_TENANT_ID, default="common", visible=file_mode)
+        ] = str
         schema_dict[vol.Optional(CONF_USER_DISPLAY_NAME)] = str
         schema_dict[vol.Optional(CONF_DEFAULT_CONVERSATION_ID)] = str
-        schema_dict.update(rbw_schema(self.hass, user_input or {}))
+        schema_dict.update(rbw_schema(self.hass, user_input or {}, browser_only=True))
 
         return self.async_show_form(
             step_id="user", data_schema=vol.Schema(schema_dict), errors=errors
@@ -203,15 +245,15 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 **(user_input or {}),
             }
 
+        if user_input is not None and user_input.get(CONF_RBW_ENTRY_ID) == "":
+            user_input = {**user_input, CONF_RBW_ITEM_ID: ""}
         submitted_settings = {**effective_settings, **(user_input or {})}
-        if user_input is not None and not rbw_config_valid(submitted_settings):
+        use_browser_daemon = submitted_settings.get(CONF_USE_BROWSER_DAEMON, False)
+        rbw_valid = not use_browser_daemon or rbw_config_valid(submitted_settings)
+        if user_input is not None and not rbw_valid:
             errors["base"] = "rbw_incomplete"
-        if user_input is not None and rbw_config_valid(submitted_settings):
+        if user_input is not None and rbw_valid:
             session = async_get_clientsession(self.hass)
-            use_browser_daemon = user_input.get(
-                CONF_USE_BROWSER_DAEMON,
-                effective_settings.get(CONF_USE_BROWSER_DAEMON, has_browser_daemon),
-            )
             auth_settings = {**effective_settings, **user_input}
             creds_file = auth_settings.get(CONF_CREDENTIALS_FILE)
             refresh_token = user_input.get(CONF_REFRESH_TOKEN)
@@ -226,6 +268,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
                         profile=profile,
+                        node_group=submitted_settings.get(CONF_BROWSER_DAEMON_NODE_GROUP),
                         hass=self.hass,
                         rbw_entry_id=submitted_settings.get(CONF_RBW_ENTRY_ID),
                         rbw_item_id=submitted_settings.get(CONF_RBW_ITEM_ID),
@@ -265,6 +308,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             for key in (
                                 CONF_USE_BROWSER_DAEMON,
                                 CONF_BROWSER_DAEMON_PROFILE,
+                                CONF_BROWSER_DAEMON_NODE_GROUP,
                                 CONF_TENANT_ID,
                             )
                             if key in user_input and key in entry.options
@@ -275,6 +319,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         for key in (
                             CONF_USE_BROWSER_DAEMON,
                             CONF_BROWSER_DAEMON_PROFILE,
+                            CONF_BROWSER_DAEMON_NODE_GROUP,
                             CONF_TENANT_ID,
                         )
                         if key in submitted_settings
@@ -286,6 +331,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             **persisted_settings,
                             **user_input,
                             **auth.export_data(),
+                            CONF_USE_BROWSER_DAEMON: use_browser_daemon,
                         },
                         options=updated_options,
                     )
@@ -307,22 +353,39 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema_dict[
                 vol.Optional(
                     CONF_USE_BROWSER_DAEMON,
-                    default=defaults.get(CONF_USE_BROWSER_DAEMON, True),
+                    default=defaults.get(CONF_USE_BROWSER_DAEMON, False),
                 )
             ] = bool
-            schema_dict[vol.Optional(CONF_BROWSER_DAEMON_PROFILE, default=default_profile)] = str
+            schema_dict[
+                data_entry_flow.Optional(
+                    CONF_BROWSER_DAEMON_PROFILE,
+                    default=default_profile,
+                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+                )
+            ] = str
+            schema_dict[
+                data_entry_flow.Optional(
+                    CONF_BROWSER_DAEMON_NODE_GROUP,
+                    default=defaults.get(CONF_BROWSER_DAEMON_NODE_GROUP, ""),
+                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+                )
+            ] = str
 
+        file_mode = {"field": CONF_USE_BROWSER_DAEMON, "operator": "not_eq", "value": True}
         schema_dict[
-            vol.Optional(
+            data_entry_flow.Optional(
                 CONF_CREDENTIALS_FILE,
                 default=defaults.get(CONF_CREDENTIALS_FILE, ""),
+                visible=file_mode,
             )
         ] = str
-        schema_dict[vol.Optional(CONF_REFRESH_TOKEN)] = str
+        schema_dict[data_entry_flow.Optional(CONF_REFRESH_TOKEN, visible=file_mode)] = str
         schema_dict[
-            vol.Optional(CONF_TENANT_ID, default=defaults.get(CONF_TENANT_ID, "common"))
+            data_entry_flow.Optional(
+                CONF_TENANT_ID, default=defaults.get(CONF_TENANT_ID, "common"), visible=file_mode
+            )
         ] = str
-        schema_dict.update(rbw_schema(self.hass, defaults))
+        schema_dict.update(rbw_schema(self.hass, defaults, browser_only=True))
 
         return self.async_show_form(
             step_id=step_id, data_schema=vol.Schema(schema_dict), errors=errors
@@ -344,6 +407,8 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
         """Manage the options."""
         errors = {}
         if user_input is not None:
+            if user_input.get(CONF_RBW_ENTRY_ID) == "":
+                user_input = {**user_input, CONF_RBW_ITEM_ID: ""}
             if rbw_config_valid(user_input):
                 return self.async_create_entry(title="", data=user_input)
             errors["base"] = "rbw_incomplete"
