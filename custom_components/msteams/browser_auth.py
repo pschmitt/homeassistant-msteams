@@ -18,6 +18,7 @@ from browser_daemon_client import (
 
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"
+LOGIN_GRACE_SECONDS = 10
 
 
 class BrowserAuthError(Exception):
@@ -117,10 +118,11 @@ async def acquire_browser_auth(
         # 3. Export auth with polling to allow page navigation and storage population
         creds = None
         max_wait = 45
-        start_time = time.time()
+        start_time = time.monotonic()
+        login_ready_at = start_time + LOGIN_GRACE_SECONDS
         login_attempted = False
 
-        while time.time() - start_time < max_wait:
+        while time.monotonic() - start_time < max_wait:
             try:
                 auth_data = await bd_client.export_auth(
                     tab_id,
@@ -143,7 +145,7 @@ async def acquire_browser_auth(
                         pass
             except Exception:
                 _LOGGER.debug("Waiting for Teams authentication export")
-            if login is not None and not login_attempted:
+            if login is not None and not login_attempted and time.monotonic() >= login_ready_at:
                 login_attempted = True
                 retain_for_login = True
                 outcome = await login(session_id, tab_id, node_name)
@@ -151,7 +153,7 @@ async def acquire_browser_auth(
                     raise BrowserInteractionRequired(
                         "Complete sign-in in the configured browser-daemon profile, then retry the Teams repair"
                     )
-                start_time = time.time()
+                start_time = time.monotonic()
             await asyncio.sleep(2)
 
         if not creds:

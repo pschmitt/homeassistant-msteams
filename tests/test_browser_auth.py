@@ -5,11 +5,30 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from browser_daemon_client import BrowserDaemon, BrowserDaemonError
 
+from custom_components.msteams import browser_auth
 from custom_components.msteams.browser_auth import (
     BrowserAuthError,
     BrowserInteractionRequired,
     acquire_browser_auth,
 )
+
+
+@pytest.fixture(autouse=True)
+def immediate_login(monkeypatch):
+    monkeypatch.setattr(browser_auth, "LOGIN_GRACE_SECONDS", 0)
+
+
+@pytest.fixture
+def readiness_clock(monkeypatch):
+    elapsed = [0]
+
+    async def advance(seconds):
+        elapsed[0] += seconds
+
+    monkeypatch.setattr(browser_auth.time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(browser_auth.asyncio, "sleep", advance)
+    monkeypatch.setattr(browser_auth, "LOGIN_GRACE_SECONDS", 10)
+    return elapsed
 
 
 def client_with_session(*, owned=False):
@@ -34,6 +53,54 @@ def client_with_session(*, owned=False):
     client._json = AsyncMock(return_value={"session": {"client_count": 0}, "targets": []})
     client.delete_session = AsyncMock()
     return client
+
+
+@pytest.mark.asyncio
+async def test_new_tab_storage_can_populate_without_login(readiness_clock):
+    client = client_with_session(owned=True)
+    client.export_auth.side_effect = [
+        {"url": "about:blank", "local_storage": {}},
+        {"url": "https://teams.microsoft.com", "local_storage": {}},
+        {"url": "https://teams.microsoft.com", "local_storage": {"k": "v"}},
+    ]
+    login = AsyncMock()
+    _, creds = await acquire_browser_auth(
+        client, "work", lambda _: {"refresh_token": "fake"}, login=login
+    )
+    assert creds["refresh_token"] == "fake"
+    assert readiness_clock[0] == 4
+    login.assert_not_awaited()
+    client.close_tab.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_silent_token_renewal_can_finish_before_login(readiness_clock):
+    client = client_with_session(owned=True)
+    validate = AsyncMock(side_effect=[BrowserAuthError("stale"), None])
+    login = AsyncMock()
+    await acquire_browser_auth(
+        client,
+        "work",
+        lambda _: {"refresh_token": "fake"},
+        login=login,
+        async_validate=validate,
+    )
+    assert readiness_clock[0] == 2
+    assert validate.await_count == 2
+    login.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_readiness_grace_expires_before_one_login_attempt(readiness_clock):
+    client = client_with_session(owned=True)
+    client.export_auth.return_value = {"url": "about:blank", "local_storage": {}}
+    login = AsyncMock(return_value="needs_interaction")
+    with pytest.raises(BrowserInteractionRequired):
+        await acquire_browser_auth(client, "work", lambda _: {}, login=login)
+    assert readiness_clock[0] == 10
+    login.assert_awaited_once_with("session", "tab", "node")
+    client.close_tab.assert_not_awaited()
+    client.set_idle_timeout.assert_awaited_once_with("session", 15, node="node")
 
 
 @pytest.mark.asyncio
