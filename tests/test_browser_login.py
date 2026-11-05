@@ -21,6 +21,10 @@ def test_passkey_script_checks_exact_origins_and_can_select_password():
     assert "page.getByRole('link', { name: methodNames })" in browser_login.PASSKEY_LOGIN_SCRIPT
     assert "page.getByRole('button', { name: passkeyNames })" in browser_login.PASSKEY_LOGIN_SCRIPT
     assert "!passkeyAvailable && !passkeySelected" in browser_login.PASSKEY_LOGIN_SCRIPT
+    assert (
+        'input[type="password"]:not([aria-hidden="true"], [aria-hidden="true"] *, [inert], [inert] *)'
+        in browser_login.PASSKEY_LOGIN_SCRIPT
+    )
     assert "#idA_PWD_SwitchToPassword" in browser_login.PASSKEY_LOGIN_SCRIPT
     assert (
         "currentUrl.origin === 'https://login.microsoftonline.com'"

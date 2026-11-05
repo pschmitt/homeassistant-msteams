@@ -33,16 +33,18 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+# UI-only value: persisted disabled rbw settings remain empty strings.
+RBW_DISABLED = "disabled"
 
 
 def rbw_schema(
     hass: Any, defaults: dict[str, Any], *, browser_only: bool = False
 ) -> dict[Any, Any]:
     browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
-    selected = {"field": CONF_RBW_ENTRY_ID, "operator": "not_eq", "value": ""}
+    selected = {"field": CONF_RBW_ENTRY_ID, "operator": "not_eq", "value": RBW_DISABLED}
     enabled = browser_only or defaults.get(CONF_USE_BROWSER_DAEMON, False)
     details = ([browser, selected] if browser_only else [selected]) if enabled else False
-    entries = {"": "Disabled"}
+    entries = {RBW_DISABLED: "Disabled"}
     entries.update(
         {entry.entry_id: entry.title for entry in hass.config_entries.async_entries("rbw")}
     )
@@ -51,7 +53,7 @@ def rbw_schema(
     return {
         data_entry_flow.Optional(
             CONF_RBW_ENTRY_ID,
-            default=defaults.get(CONF_RBW_ENTRY_ID, ""),
+            default=defaults.get(CONF_RBW_ENTRY_ID) or RBW_DISABLED,
             visible=browser if browser_only else defaults.get(CONF_USE_BROWSER_DAEMON, False),
         ): vol.In(entries),
         data_entry_flow.Optional(
@@ -65,6 +67,13 @@ def rbw_schema(
             visible=details,
         ): bool,
     }
+
+
+def normalize_rbw_input(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert the UI disabled value and discard any stale hidden item id."""
+    if data.get(CONF_RBW_ENTRY_ID) in ("", RBW_DISABLED):
+        return {**data, CONF_RBW_ENTRY_ID: "", CONF_RBW_ITEM_ID: ""}
+    return data
 
 
 def rbw_config_valid(data: dict[str, Any]) -> bool:
@@ -86,8 +95,8 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.hass.data.get("browser_daemon")
         )
 
-        if user_input is not None and user_input.get(CONF_RBW_ENTRY_ID) == "":
-            user_input = {**user_input, CONF_RBW_ITEM_ID: ""}
+        if user_input is not None:
+            user_input = normalize_rbw_input(user_input)
         rbw_valid = not (user_input or {}).get(CONF_USE_BROWSER_DAEMON) or rbw_config_valid(
             user_input or {}
         )
@@ -245,8 +254,8 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 **(user_input or {}),
             }
 
-        if user_input is not None and user_input.get(CONF_RBW_ENTRY_ID) == "":
-            user_input = {**user_input, CONF_RBW_ITEM_ID: ""}
+        if user_input is not None:
+            user_input = normalize_rbw_input(user_input)
         submitted_settings = {**effective_settings, **(user_input or {})}
         use_browser_daemon = submitted_settings.get(CONF_USE_BROWSER_DAEMON, False)
         rbw_valid = not use_browser_daemon or rbw_config_valid(submitted_settings)
@@ -407,8 +416,7 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
         """Manage the options."""
         errors = {}
         if user_input is not None:
-            if user_input.get(CONF_RBW_ENTRY_ID) == "":
-                user_input = {**user_input, CONF_RBW_ITEM_ID: ""}
+            user_input = normalize_rbw_input(user_input)
             if rbw_config_valid(user_input):
                 return self.async_create_entry(title="", data=user_input)
             errors["base"] = "rbw_incomplete"

@@ -79,7 +79,9 @@ PASSKEY_LOGIN_SCRIPT = r"""async ({ page, args }) => {
       }
       if (await page.locator('#passwordError, #usernameError, #idDiv_SAOTCC_Error').first().isVisible())
         return { outcome: 'failed', reason: 'login_error_visible' };
-      const password = page.locator('input[type="password"]').first();
+      const password = page.locator(
+        'input[type="password"]:not([aria-hidden="true"], [aria-hidden="true"] *, [inert], [inert] *)'
+      ).filter({ visible: true }).first();
       const methodNames = /^(sign.in options|other ways to sign in|sign in another way)$/i;
       const otherMethods = page.getByRole('link', { name: methodNames })
         .or(page.getByRole('button', { name: methodNames }))
