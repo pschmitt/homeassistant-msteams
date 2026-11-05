@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/pschmitt/homeassistant-msteams/actions/workflows/ci.yaml"><img src="https://github.com/pschmitt/homeassistant-msteams/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
-  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg" alt="HACS Custom integration"></a>
+  <a href="https://my.home-assistant.io/redirect/marketplace_repository/?owner=pschmitt&amp;repository=homeassistant-msteams&amp;category=integration"><img src="https://my.home-assistant.io/badges/marketplace_repository.svg" alt="Open this integration in Home Assistant Marketplace"></a>
 </p>
 
 <h1 align="center">Microsoft Teams for Home Assistant</h1>
@@ -20,7 +20,8 @@
 
 ## Install
 
-- **HACS**: Add this repository as a custom repository with category **Integration**, install it, and restart Home Assistant.
+- **Marketplace (Home Assistant 2026.11+)**: Use the badge above to add this repository as a custom integration, install it, and restart Home Assistant. This does not imply a public catalog listing.
+- **Older versions**: Add this repository as a HACS custom repository with category **Integration**, install it, and restart Home Assistant.
 - **Manual**: Copy `custom_components/msteams` from this repository into the Home Assistant configuration directory at `custom_components/msteams`. Then restart Home Assistant.
 
 See [Installation](docs/installation.md) for details.
@@ -36,7 +37,7 @@ See [Installation](docs/installation.md) for details.
 
 | Topic | Description |
 | --- | --- |
-| [Installation](docs/installation.md) | HACS and manual installation instructions. |
+| [Installation](docs/installation.md) | Marketplace, HACS and manual installation instructions. |
 | [Configuration](docs/configuration.md) | Add, reconfigure, and adjust integration options. |
 | [Authentication](docs/authentication.md) | Browser-daemon, rbw, token refresh, and account safety. |
 | [Entities](docs/entities.md) | Sensors, binary sensors, meeting events, and diagnostic entities. |
