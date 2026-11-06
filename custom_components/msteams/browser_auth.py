@@ -150,7 +150,7 @@ async def acquire_browser_auth(
                 if _is_teams_host(url) and auth_data.get("local_storage"):
                     try:
                         parsed = validate(auth_data)
-                        if parsed.get("refresh_token"):
+                        if parsed.get("refresh_token") or parsed.get("spaces_token"):
                             if async_validate is not None:
                                 await async_validate(parsed)
                             creds = parsed
