@@ -15,7 +15,9 @@ from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, Tex
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
+    CONF_BROWSER_DAEMON_ENTRY_ID,
     CONF_BROWSER_DAEMON_NODE_GROUP,
+    CONF_BROWSER_DAEMON_OVERRIDE,
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_BROWSER_DAEMON_SECRET,
     CONF_BROWSER_DAEMON_URL,
@@ -46,29 +48,80 @@ class InvalidBrowserDaemonConnection(Exception):
 
 
 def browser_connection(submitted: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
-    """Resolve the connection to store; a blank URL uses the Browser Daemon integration."""
-    url = str(submitted.get(CONF_BROWSER_DAEMON_URL) or "").strip().rstrip("/")
-    if not url:
-        return {CONF_BROWSER_DAEMON_URL: "", CONF_BROWSER_DAEMON_SECRET: None}
+    """Resolve the connection to store; hidden form fields are not submitted."""
+    url = str(
+        submitted.get(CONF_BROWSER_DAEMON_URL, saved.get(CONF_BROWSER_DAEMON_URL)) or ""
+    ).strip()
+    if not submitted.get(CONF_BROWSER_DAEMON_OVERRIDE, bool(url)):
+        return {
+            CONF_BROWSER_DAEMON_ENTRY_ID: submitted.get(
+                CONF_BROWSER_DAEMON_ENTRY_ID, saved.get(CONF_BROWSER_DAEMON_ENTRY_ID)
+            )
+            or "",
+            CONF_BROWSER_DAEMON_URL: "",
+            CONF_BROWSER_DAEMON_SECRET: None,
+        }
     # A blank secret keeps the saved one.
     secret = str(submitted.get(CONF_BROWSER_DAEMON_SECRET) or "").strip() or saved.get(
         CONF_BROWSER_DAEMON_SECRET
     )
     if urlsplit(url).scheme not in {"http", "https"} or not secret:
         raise InvalidBrowserDaemonConnection
-    return {CONF_BROWSER_DAEMON_URL: url, CONF_BROWSER_DAEMON_SECRET: secret}
-
-
-def connection_schema(defaults: dict[str, Any]) -> dict[Any, Any]:
-    """The explicit browser-daemon connection. The cluster secret is never prefilled."""
-    browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
     return {
+        CONF_BROWSER_DAEMON_ENTRY_ID: "",
+        CONF_BROWSER_DAEMON_URL: url.rstrip("/"),
+        CONF_BROWSER_DAEMON_SECRET: secret,
+    }
+
+
+def connection_schema(
+    hass: Any, defaults: dict[str, Any], *, browser_toggle: bool = True
+) -> dict[Any, Any]:
+    """Which Browser Daemon integration to use, or an override.
+
+    The cluster secret is never prefilled.
+    """
+    # The repair form has no toggle: it only shows for browser authentication.
+    browser = [{"field": CONF_USE_BROWSER_DAEMON, "value": True}] if browser_toggle else []
+    saved = defaults.get(CONF_BROWSER_DAEMON_ENTRY_ID)
+    daemons = {
+        entry.entry_id: entry.title
+        for entry in hass.config_entries.async_entries("browser_daemon")
+        if not entry.disabled_by
+    }
+    if saved:
+        daemons.setdefault(saved, "Unavailable integration")
+    override = [*browser, {"field": CONF_BROWSER_DAEMON_OVERRIDE, "value": True}]
+    selection = (
+        {
+            data_entry_flow.Optional(
+                CONF_BROWSER_DAEMON_ENTRY_ID,
+                default=saved or next(iter(daemons)),
+                visible=[
+                    *browser,
+                    {"field": CONF_BROWSER_DAEMON_OVERRIDE, "operator": "not_eq", "value": True},
+                ],
+            ): vol.In(daemons)
+        }
+        if daemons
+        else {}
+    )
+    return {
+        **selection,
+        data_entry_flow.Optional(
+            CONF_BROWSER_DAEMON_OVERRIDE,
+            default=defaults.get(
+                CONF_BROWSER_DAEMON_OVERRIDE, bool(defaults.get(CONF_BROWSER_DAEMON_URL))
+            )
+            or not daemons,
+            visible=browser or True,
+        ): bool,
         data_entry_flow.Optional(
             CONF_BROWSER_DAEMON_URL,
             default=defaults.get(CONF_BROWSER_DAEMON_URL) or "",
-            visible=browser,
+            visible=override,
         ): TextSelector(TextSelectorConfig(type=TextSelectorType.URL)),
-        data_entry_flow.Optional(CONF_BROWSER_DAEMON_SECRET, visible=browser): TextSelector(
+        data_entry_flow.Optional(CONF_BROWSER_DAEMON_SECRET, visible=override): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
     }
@@ -151,8 +204,14 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if use_browser_daemon:
                     profile = user_input.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE)
                     connection = browser_connection(user_input, {})
+                    user_input = {
+                        key: value
+                        for key, value in user_input.items()
+                        if key != CONF_BROWSER_DAEMON_OVERRIDE
+                    }
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
+                        browser_daemon_entry_id=connection[CONF_BROWSER_DAEMON_ENTRY_ID],
                         browser_daemon_url=connection[CONF_BROWSER_DAEMON_URL],
                         secret=connection[CONF_BROWSER_DAEMON_SECRET],
                         profile=profile,
@@ -217,7 +276,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # An explicit connection works without the Browser Daemon integration.
         schema_dict: dict[Any, Any] = {
             vol.Optional(CONF_USE_BROWSER_DAEMON, default=has_browser_daemon): bool,
-            **connection_schema(user_input or {}),
+            **connection_schema(self.hass, user_input or {}),
         }
         schema_dict[
             data_entry_flow.Optional(
@@ -318,17 +377,15 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_BROWSER_DAEMON_PROFILE,
                         effective_settings.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
                     )
-                    connection = browser_connection(
-                        {
-                            CONF_BROWSER_DAEMON_URL: effective_settings.get(
-                                CONF_BROWSER_DAEMON_URL
-                            ),
-                            **user_input,
-                        },
-                        effective_settings,
-                    )
+                    connection = browser_connection(user_input, effective_settings)
+                    user_input = {
+                        key: value
+                        for key, value in user_input.items()
+                        if key != CONF_BROWSER_DAEMON_OVERRIDE
+                    }
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
+                        browser_daemon_entry_id=connection[CONF_BROWSER_DAEMON_ENTRY_ID],
                         browser_daemon_url=connection[CONF_BROWSER_DAEMON_URL],
                         secret=connection[CONF_BROWSER_DAEMON_SECRET],
                         profile=profile,
@@ -423,7 +480,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_USE_BROWSER_DAEMON,
                 default=defaults.get(CONF_USE_BROWSER_DAEMON, False),
             ): bool,
-            **connection_schema(defaults),
+            **connection_schema(self.hass, defaults),
         }
         schema_dict[
             data_entry_flow.Optional(

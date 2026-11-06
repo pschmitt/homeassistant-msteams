@@ -329,6 +329,7 @@ async def test_reauth_persists_submitted_rbw_settings_to_options(returned_prefix
     assert result["type"] == "abort"
     auth_from_browser.assert_awaited_once_with(
         session=auth_from_browser.await_args.kwargs["session"],
+        browser_daemon_entry_id="",
         browser_daemon_url="",
         secret=None,
         profile="work",
@@ -808,8 +809,40 @@ def test_authentication_fields_have_translated_labels(language):
     assert translated["config"]["abort"]["reconfigure_successful"]
 
 
+def _daemon_entry(entry_id="bd1", title="Browser Daemon (a)", disabled_by=None):
+    entry = MagicMock(entry_id=entry_id, disabled_by=disabled_by)
+    entry.title = title
+    return entry
+
+
 @pytest.mark.asyncio
-async def test_browser_connection_fields_never_prefill_secret():
+async def test_connection_form_selects_integration_with_override_behind_checkbox():
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config.components = {"browser_daemon"}
+    flow.hass.data = {}
+    flow.hass.config_entries.async_entries.side_effect = lambda domain: (
+        [_daemon_entry(), _daemon_entry("off", "Off", disabled_by="user")]
+        if domain == "browser_daemon"
+        else []
+    )
+    result = await flow.async_step_user()
+    markers = {key.schema: key for key in result["data_schema"].schema}
+    browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
+    override = {"field": "browser_daemon_override", "value": True}
+    assert result["data_schema"].schema[markers["browser_daemon_entry_id"]].container == {
+        "bd1": "Browser Daemon (a)"
+    }
+    assert markers["browser_daemon_entry_id"].default() == "bd1"
+    assert markers["browser_daemon_override"].default() is False
+    assert markers["browser_daemon_url"].visible == [browser, override]
+    assert markers["browser_daemon_secret"].visible == [browser, override]
+    # The cluster secret is never prefilled.
+    assert "browser_daemon_secret" not in result["data_schema"]({})
+
+
+@pytest.mark.asyncio
+async def test_connection_form_without_integration_only_offers_override():
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
     flow.hass.config.components = set()
@@ -817,28 +850,33 @@ async def test_browser_connection_fields_never_prefill_secret():
     flow.hass.config_entries.async_entries.return_value = []
     result = await flow.async_step_user()
     markers = {key.schema: key for key in result["data_schema"].schema}
-    # An explicit connection does not need the Browser Daemon integration.
-    assert CONF_USE_BROWSER_DAEMON in markers
-    assert markers["browser_daemon_url"].visible == {
-        "field": CONF_USE_BROWSER_DAEMON,
-        "value": True,
-    }
-    assert "browser_daemon_secret" not in result["data_schema"]({})
+    assert "browser_daemon_entry_id" not in markers
+    assert markers["browser_daemon_override"].default() is True
 
 
 @pytest.mark.parametrize(
     ("submitted", "saved", "expected"),
     [
-        ({}, {"browser_daemon_secret": "old"}, ("", None)),
+        # Hidden fields are not submitted: the checkbox decides, stale values go.
         (
-            {"browser_daemon_url": "https://bd.example/", "browser_daemon_secret": " new "},
-            {},
-            ("https://bd.example", "new"),
+            {"browser_daemon_override": False, "browser_daemon_entry_id": "bd2"},
+            {"browser_daemon_url": "https://old", "browser_daemon_secret": "old"},
+            ("bd2", "", None),
+        ),
+        ({}, {"browser_daemon_entry_id": "bd1"}, ("bd1", "", None)),
+        (
+            {
+                "browser_daemon_override": True,
+                "browser_daemon_url": "https://bd.example/",
+                "browser_daemon_secret": " new ",
+            },
+            {"browser_daemon_entry_id": "bd1"},
+            ("", "https://bd.example", "new"),
         ),
         (
-            {"browser_daemon_url": "https://bd.example", "browser_daemon_secret": ""},
+            {"browser_daemon_override": True, "browser_daemon_url": "https://bd.example"},
             {"browser_daemon_secret": "old"},
-            ("https://bd.example", "old"),
+            ("", "https://bd.example", "old"),
         ),
     ],
 )
@@ -846,17 +884,26 @@ def test_browser_connection_resolves(submitted, saved, expected):
     from custom_components.msteams.config_flow import browser_connection
 
     result = browser_connection(submitted, saved)
-    assert (result["browser_daemon_url"], result["browser_daemon_secret"]) == expected
+    assert (
+        result["browser_daemon_entry_id"],
+        result["browser_daemon_url"],
+        result["browser_daemon_secret"],
+    ) == expected
 
 
 @pytest.mark.parametrize(
     "submitted",
     [
-        {"browser_daemon_url": "https://bd.example"},
-        {"browser_daemon_url": "bd.example", "browser_daemon_secret": "s"},
+        {"browser_daemon_override": True},
+        {"browser_daemon_override": True, "browser_daemon_url": "https://bd.example"},
+        {
+            "browser_daemon_override": True,
+            "browser_daemon_url": "bd.example",
+            "browser_daemon_secret": "s",
+        },
     ],
 )
-def test_browser_connection_rejects_incomplete(submitted):
+def test_browser_connection_rejects_incomplete_override(submitted):
     from custom_components.msteams.config_flow import (
         InvalidBrowserDaemonConnection,
         browser_connection,

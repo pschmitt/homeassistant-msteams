@@ -444,40 +444,73 @@ async def test_send_message_places_channel_subject_in_properties():
     }
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("explicit_url", "explicit_secret", "expected"),
-    [
-        ("https://own.example", "own", ("https://own.example", "own")),
-        (None, None, ("https://shared.example", "shared")),
-    ],
-)
-async def test_explicit_browser_connection_beats_integration(
-    monkeypatch, explicit_url, explicit_secret, expected
-):
-    """Only a blank URL falls back to the Browser Daemon integration's connection."""
+def _provider(monkeypatch, **attrs):
     import sys
     import types
 
+    provider = types.ModuleType("custom_components.browser_daemon")
+    provider.BrowserDaemonError = type("BrowserDaemonError", (Exception,), {})
+    provider.async_get_daemon = MagicMock(return_value=MagicMock())
+    for name, value in attrs.items():
+        setattr(provider, name, value)
+    monkeypatch.setitem(sys.modules, "custom_components.browser_daemon", provider)
+    return provider
+
+
+@pytest.mark.asyncio
+async def test_selected_integration_provides_the_client(monkeypatch):
     from custom_components.msteams import api
     from custom_components.msteams.browser_auth import BrowserAuthError
 
-    shared = types.ModuleType("custom_components.browser_daemon")
-    shared.async_get_client = lambda hass: MagicMock(
-        base_url="https://shared.example", cluster_secret="shared"
-    )
-    monkeypatch.setitem(sys.modules, "custom_components.browser_daemon", shared)
-    used = {}
-
-    def client(_session, url, secret, **_kwargs):
-        used["connection"] = (url, secret)
-        return MagicMock()
-
-    monkeypatch.setattr(api, "TeamsBrowserDaemon", client)
-    monkeypatch.setattr(api, "acquire_browser_auth", AsyncMock(side_effect=BrowserAuthError()))
+    provider = _provider(monkeypatch)
+    direct = MagicMock()
+    monkeypatch.setattr(api, "TeamsBrowserDaemon", direct)
+    acquire = AsyncMock(side_effect=BrowserAuthError())
+    monkeypatch.setattr(api, "acquire_browser_auth", acquire)
+    hass = object()
 
     with pytest.raises(TeamsAuthError):
         await TeamsAuth.async_from_browser_daemon(
-            MagicMock(), browser_daemon_url=explicit_url, secret=explicit_secret, hass=object()
+            MagicMock(), hass=hass, browser_daemon_entry_id="bd2"
         )
-    assert used["connection"] == expected
+
+    provider.async_get_daemon.assert_called_once_with(
+        hass, client=api.BROWSER_DAEMON_CLIENT, cls=direct, entry_id="bd2"
+    )
+    direct.assert_not_called()
+    assert acquire.await_args.args[0] is provider.async_get_daemon.return_value
+
+
+@pytest.mark.asyncio
+async def test_override_connects_directly(monkeypatch):
+    from custom_components.msteams import api
+    from custom_components.msteams.browser_auth import BrowserAuthError
+
+    provider = _provider(monkeypatch)
+    direct = MagicMock()
+    monkeypatch.setattr(api, "TeamsBrowserDaemon", direct)
+    monkeypatch.setattr(api, "acquire_browser_auth", AsyncMock(side_effect=BrowserAuthError()))
+    session = MagicMock()
+
+    with pytest.raises(TeamsAuthError):
+        await TeamsAuth.async_from_browser_daemon(
+            session,
+            browser_daemon_url="https://own.example",
+            secret="own",
+            hass=object(),
+            browser_daemon_entry_id="ignored",
+        )
+
+    provider.async_get_daemon.assert_not_called()
+    direct.assert_called_once_with(
+        session, "https://own.example", "own", client=api.BROWSER_DAEMON_CLIENT
+    )
+
+
+@pytest.mark.asyncio
+async def test_unavailable_integration_is_an_auth_error(monkeypatch):
+    provider = _provider(monkeypatch)
+    provider.async_get_daemon.side_effect = provider.BrowserDaemonError("gone")
+
+    with pytest.raises(TeamsAuthError, match="Browser Daemon integration"):
+        await TeamsAuth.async_from_browser_daemon(MagicMock(), hass=object())

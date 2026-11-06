@@ -21,7 +21,6 @@ from .browser_auth import BrowserAuthError, acquire_browser_auth
 from .browser_login import TeamsBrowserDaemon, async_login
 from .const import (
     AUTHSVC_ENDPOINT,
-    DEFAULT_BROWSER_DAEMON_URL,
     DEFAULT_PROFILE,
     DEFAULT_REGION,
     DEFAULT_TEAMS_BASE_URL,
@@ -37,6 +36,9 @@ MIDDLETIER_VERSION_HEADER = "49/25113001312"
 _UUID_MRI_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+
+
+BROWSER_DAEMON_CLIENT = "Home Assistant · Teams"
 
 
 class TeamsAuthError(Exception):
@@ -148,6 +150,7 @@ class TeamsAuth:
         on_tokens_refreshed: Callable[[dict[str, Any]], Any] | None = None,
         hass: Any | None = None,
         browser_daemon_url: str | None = None,
+        browser_daemon_entry_id: str | None = None,
         browser_daemon_profile: str = DEFAULT_PROFILE,
         browser_daemon_secret: str | None = None,
         browser_daemon_node_group: str | None = None,
@@ -166,6 +169,7 @@ class TeamsAuth:
         self.on_tokens_refreshed = on_tokens_refreshed
         self.hass = hass
         self.browser_daemon_url = browser_daemon_url
+        self.browser_daemon_entry_id = browser_daemon_entry_id
         self.browser_daemon_profile = browser_daemon_profile
         self.browser_daemon_secret = browser_daemon_secret
         self.browser_daemon_node_group = browser_daemon_node_group
@@ -218,6 +222,7 @@ class TeamsAuth:
             new_auth = await self.async_from_browser_daemon(
                 session=self.session,
                 browser_daemon_url=self.browser_daemon_url,
+                browser_daemon_entry_id=self.browser_daemon_entry_id,
                 profile=self.browser_daemon_profile,
                 node_group=self.browser_daemon_node_group,
                 secret=self.browser_daemon_secret,
@@ -471,6 +476,34 @@ class TeamsAuth:
         await auth.async_refresh_tokens()
         return auth
 
+    @staticmethod
+    def _browser_daemon(
+        hass: Any,
+        session: aiohttp.ClientSession,
+        url: str | None,
+        secret: str | None,
+        entry_id: str | None,
+    ) -> TeamsBrowserDaemon:
+        """The override's client, or the one the Browser Daemon integration provides."""
+        if url:
+            return TeamsBrowserDaemon(session, url, secret, client=BROWSER_DAEMON_CLIENT)
+        message = "Select an available Browser Daemon integration or set an override"
+        if hass is None:
+            raise TeamsAuthError(message)
+        try:
+            from custom_components.browser_daemon import BrowserDaemonError, async_get_daemon
+        except ImportError:
+            raise TeamsAuthError(message) from None
+        try:
+            return async_get_daemon(
+                hass,
+                client=BROWSER_DAEMON_CLIENT,
+                cls=TeamsBrowserDaemon,
+                entry_id=entry_id or None,
+            )
+        except BrowserDaemonError:
+            raise TeamsAuthError(message) from None
+
     @classmethod
     async def async_from_browser_daemon(
         cls,
@@ -483,21 +516,12 @@ class TeamsAuth:
         rbw_item_id: str | None = None,
         prefer_passkey: bool = True,
         node_group: str | None = None,
+        browser_daemon_entry_id: str | None = None,
     ) -> TeamsAuth:
-        """Acquire credentials automatically via browser-daemon."""
-        url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
-        if hass is not None and not browser_daemon_url:
-            # Without an explicit URL, reuse the browser_daemon integration's connection.
-            try:
-                from custom_components.browser_daemon import async_get_client
-
-                hass_client = async_get_client(hass)
-                url = getattr(hass_client, "base_url", None) or url
-                secret = getattr(hass_client, "cluster_secret", None) or secret
-            except Exception:
-                _LOGGER.debug("Could not get browser-daemon client from Home Assistant")
-
-        bd_client = TeamsBrowserDaemon(session, url, secret, client="Home Assistant · Teams")
+        """Acquire credentials through the selected Browser Daemon integration or an override."""
+        bd_client = cls._browser_daemon(
+            hass, session, browser_daemon_url, secret, browser_daemon_entry_id
+        )
         expected_username = None
         verified_auth: TeamsAuth | None = None
 
@@ -565,6 +589,7 @@ class TeamsAuth:
         auth = verified_auth
         auth.hass = hass
         auth.browser_daemon_url = browser_daemon_url
+        auth.browser_daemon_entry_id = browser_daemon_entry_id
         auth.browser_daemon_profile = profile
         auth.browser_daemon_node_group = node_group
         auth.browser_daemon_secret = secret

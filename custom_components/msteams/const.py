@@ -14,6 +14,9 @@ CONF_ENABLE_PUSH = "enable_push"
 CONF_RBW_ENTRY_ID = "rbw_entry_id"
 CONF_RBW_ITEM_ID = "rbw_item_id"
 CONF_PREFER_PASSKEY = "prefer_passkey"
+CONF_BROWSER_DAEMON_ENTRY_ID = "browser_daemon_entry_id"
+# Form only: whether the URL and secret replace the selected integration.
+CONF_BROWSER_DAEMON_OVERRIDE = "browser_daemon_override"
 CONF_BROWSER_DAEMON_URL = "browser_daemon_url"
 CONF_BROWSER_DAEMON_PROFILE = "browser_daemon_profile"
 CONF_BROWSER_DAEMON_NODE_GROUP = "browser_daemon_node_group"
@@ -35,7 +38,6 @@ CONF_USER_EMAIL = "user_email"
 
 # Defaults
 DEFAULT_PROFILE = "ha-msteams"
-DEFAULT_BROWSER_DAEMON_URL = "https://browser.fnuc.ts.brkn.lol"
 DEFAULT_POLL_INTERVAL = 30
 DEFAULT_REGION = "emea"
 DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"

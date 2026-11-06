@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import TeamsApiClient, TeamsAuth
 from .const import (
+    CONF_BROWSER_DAEMON_ENTRY_ID,
     CONF_BROWSER_DAEMON_NODE_GROUP,
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_BROWSER_DAEMON_SECRET,
@@ -63,6 +64,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass=hass,
         browser_daemon_url=entry.data.get(CONF_BROWSER_DAEMON_URL)
         or entry.options.get(CONF_BROWSER_DAEMON_URL),
+        browser_daemon_entry_id=entry.data.get(CONF_BROWSER_DAEMON_ENTRY_ID)
+        or entry.options.get(CONF_BROWSER_DAEMON_ENTRY_ID),
         browser_daemon_profile=entry.options.get(
             CONF_BROWSER_DAEMON_PROFILE,
             entry.data.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),

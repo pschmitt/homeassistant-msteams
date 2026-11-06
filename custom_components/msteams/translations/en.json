@@ -6,7 +6,9 @@
         "description": "Authenticate automatically using Browser Daemon, or provide a credentials file or OAuth refresh token.",
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_url": "browser-daemon URL (blank: use the Browser Daemon integration)",
+          "browser_daemon_entry_id": "Browser Daemon integration",
+          "browser_daemon_override": "Override with a custom URL and cluster secret",
+          "browser_daemon_url": "browser-daemon URL",
           "browser_daemon_secret": "Cluster secret (blank: keep saved)",
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
@@ -25,7 +27,9 @@
         "description": "Re-acquire authentication tokens from Browser Daemon or provide updated credentials.",
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_url": "browser-daemon URL (blank: use the Browser Daemon integration)",
+          "browser_daemon_entry_id": "Browser Daemon integration",
+          "browser_daemon_override": "Override with a custom URL and cluster secret",
+          "browser_daemon_url": "browser-daemon URL",
           "browser_daemon_secret": "Cluster secret (blank: keep saved)",
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
@@ -42,7 +46,9 @@
         "description": "Update the authentication settings for this Teams account. Sign in again to save the changes.",
         "data": {
           "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_url": "browser-daemon URL (blank: use the Browser Daemon integration)",
+          "browser_daemon_entry_id": "Browser Daemon integration",
+          "browser_daemon_override": "Override with a custom URL and cluster secret",
+          "browser_daemon_url": "browser-daemon URL",
           "browser_daemon_secret": "Cluster secret (blank: keep saved)",
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
@@ -60,7 +66,7 @@
       "missing_credentials": "Please select Browser Daemon import, or provide a credentials file or refresh token.",
       "auth_failed": "Authentication failed or token invalid.",
       "cannot_connect": "Could not connect to Microsoft Teams endpoint.",
-      "invalid_browser_daemon_connection": "An explicit browser-daemon connection needs an http(s) URL and a cluster secret."
+      "invalid_browser_daemon_connection": "An override needs an http(s) URL and a cluster secret."
     },
     "abort": {
       "already_configured": "This Microsoft Teams account is already configured.",
@@ -95,10 +101,12 @@
             "title": "Sign in to Teams again",
             "description": "Retry the configured authentication method. For file or token authentication, provide an updated credentials file or fresh refresh token. Browser authentication uses the configured profile and optional rbw account. Complete any interactive Microsoft challenge in that profile, then retry. Pending browser login pages are kept for 15 minutes.",
             "data": {
-              "browser_daemon_url": "browser-daemon URL (blank: use the Browser Daemon integration)",
+              "browser_daemon_entry_id": "Browser Daemon integration",
+              "browser_daemon_override": "Override with a custom URL and cluster secret",
+              "browser_daemon_url": "browser-daemon URL",
+              "browser_daemon_secret": "Cluster secret (blank: keep saved)",
               "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
               "browser_daemon_node_group": "Browser Daemon node group (optional)",
-              "browser_daemon_secret": "Cluster secret (blank: keep saved)",
               "credentials_file": "Credentials file path",
               "refresh_token": "OAuth refresh token",
               "tenant_id": "Tenant ID"
@@ -107,7 +115,8 @@
         },
         "error": {
           "auth_failed": "Failed to authenticate or extract session tokens.",
-          "cannot_connect": "Could not reach Microsoft Teams endpoint."
+          "cannot_connect": "Could not reach Microsoft Teams endpoint.",
+          "invalid_browser_daemon_connection": "An override needs an http(s) URL and a cluster secret."
         }
       }
     }

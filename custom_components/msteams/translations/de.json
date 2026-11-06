@@ -6,7 +6,9 @@
         "description": "Automatisch über Browser Daemon authentifizieren oder eine Anmeldedatei bzw. ein OAuth-Refresh-Token angeben.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+          "browser_daemon_entry_id": "Browser-Daemon-Integration",
+          "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
+          "browser_daemon_url": "browser-daemon-URL",
           "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
@@ -25,7 +27,9 @@
         "description": "Authentifizierungs-Token über Browser Daemon neu laden oder aktualisierte Anmeldedaten angeben.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+          "browser_daemon_entry_id": "Browser-Daemon-Integration",
+          "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
+          "browser_daemon_url": "browser-daemon-URL",
           "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
@@ -42,7 +46,9 @@
         "description": "Aktualisiere die Authentifizierungseinstellungen dieses Teams-Kontos. Melde dich erneut an, um die Änderungen zu speichern.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+          "browser_daemon_entry_id": "Browser-Daemon-Integration",
+          "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
+          "browser_daemon_url": "browser-daemon-URL",
           "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
@@ -60,7 +66,7 @@
       "missing_credentials": "Bitte Browser Daemon Import wählen oder eine Anmeldedatei bzw. ein Refresh-Token angeben.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
       "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen.",
-      "invalid_browser_daemon_connection": "Eine eigene browser-daemon-Verbindung braucht eine http(s)-URL und ein Cluster-Geheimnis."
+      "invalid_browser_daemon_connection": "Das Überschreiben braucht eine http(s)-URL und ein Cluster-Geheimnis."
     },
     "abort": {
       "already_configured": "Dieses Microsoft Teams-Konto ist bereits konfiguriert.",
@@ -95,10 +101,12 @@
             "title": "Teams neu anmelden",
             "description": "Versuche die konfigurierte Anmeldemethode erneut. Gib bei Datei- oder Token-Anmeldung eine aktualisierte Anmeldedatei oder ein neues Refresh-Token an. Die Browser-Anmeldung verwendet das konfigurierte Profil und optional rbw. Schließe manuelle Microsoft-Abfragen in diesem Profil ab und versuche es erneut. Offene Anmeldeseiten bleiben 15 Minuten erhalten.",
             "data": {
-              "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+              "browser_daemon_entry_id": "Browser-Daemon-Integration",
+              "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
+              "browser_daemon_url": "browser-daemon-URL",
+              "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
               "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
               "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
-              "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
               "credentials_file": "Pfad zur Anmeldedatei",
               "refresh_token": "OAuth-Refresh-Token",
               "tenant_id": "Mandanten-ID"
@@ -107,7 +115,8 @@
         },
         "error": {
           "auth_failed": "Fehler beim Authentifizieren oder Auslesen der Token.",
-          "cannot_connect": "Microsoft Teams Endpunkt nicht erreichbar."
+          "cannot_connect": "Microsoft Teams Endpunkt nicht erreichbar.",
+          "invalid_browser_daemon_connection": "Das Überschreiben braucht eine http(s)-URL und ein Cluster-Geheimnis."
         }
       }
     }

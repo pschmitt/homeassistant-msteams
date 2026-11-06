@@ -11,11 +11,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
+from .config_flow import InvalidBrowserDaemonConnection, browser_connection, connection_schema
 from .const import (
+    CONF_BROWSER_DAEMON_ENTRY_ID,
     CONF_BROWSER_DAEMON_NODE_GROUP,
+    CONF_BROWSER_DAEMON_OVERRIDE,
     CONF_BROWSER_DAEMON_PROFILE,
     CONF_BROWSER_DAEMON_SECRET,
     CONF_BROWSER_DAEMON_URL,
@@ -61,15 +63,16 @@ class TeamsAuthRepairFlow(RepairsFlow):
             submitted = {**settings, **user_input}
 
             try:
+                connection: dict[str, Any] = {}
                 if use_browser:
+                    connection = browser_connection(user_input, settings)
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
-                        browser_daemon_url=submitted.get(CONF_BROWSER_DAEMON_URL),
+                        browser_daemon_entry_id=connection[CONF_BROWSER_DAEMON_ENTRY_ID],
+                        browser_daemon_url=connection[CONF_BROWSER_DAEMON_URL],
                         profile=submitted.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
                         node_group=submitted.get(CONF_BROWSER_DAEMON_NODE_GROUP),
-                        secret=user_input.get(CONF_BROWSER_DAEMON_SECRET)
-                        or settings.get(CONF_BROWSER_DAEMON_SECRET)
-                        or None,
+                        secret=connection[CONF_BROWSER_DAEMON_SECRET],
                         hass=self.hass,
                         rbw_entry_id=settings.get(CONF_RBW_ENTRY_ID),
                         rbw_item_id=settings.get(CONF_RBW_ITEM_ID),
@@ -97,10 +100,10 @@ class TeamsAuthRepairFlow(RepairsFlow):
                 new_data = {
                     **entry.data,
                     **user_input,
+                    **connection,
                     **auth.export_data(),
                 }
-                if use_browser and not user_input.get(CONF_BROWSER_DAEMON_SECRET):
-                    new_data[CONF_BROWSER_DAEMON_SECRET] = settings.get(CONF_BROWSER_DAEMON_SECRET)
+                new_data.pop(CONF_BROWSER_DAEMON_OVERRIDE, None)
                 options = {
                     **entry.options,
                     **{key: value for key, value in user_input.items() if key in entry.options},
@@ -109,6 +112,8 @@ class TeamsAuthRepairFlow(RepairsFlow):
                 ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry_id}")
                 await self.hass.config_entries.async_reload(self.entry_id)
                 return self.async_create_entry(title="", data={})
+            except InvalidBrowserDaemonConnection:
+                errors["base"] = "invalid_browser_daemon_connection"
             except TeamsAuthError:
                 _LOGGER.warning("Teams repair authentication failed")
                 errors["base"] = "auth_failed"
@@ -118,10 +123,7 @@ class TeamsAuthRepairFlow(RepairsFlow):
 
         if use_browser:
             fields = {
-                vol.Optional(
-                    CONF_BROWSER_DAEMON_URL,
-                    default=settings.get(CONF_BROWSER_DAEMON_URL, ""),
-                ): str,
+                **connection_schema(self.hass, settings, browser_toggle=False),
                 vol.Optional(
                     CONF_BROWSER_DAEMON_PROFILE,
                     default=settings.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
@@ -130,9 +132,6 @@ class TeamsAuthRepairFlow(RepairsFlow):
                     CONF_BROWSER_DAEMON_NODE_GROUP,
                     default=settings.get(CONF_BROWSER_DAEMON_NODE_GROUP, ""),
                 ): str,
-                vol.Optional(CONF_BROWSER_DAEMON_SECRET): TextSelector(
-                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                ),
             }
         else:
             fields = {
