@@ -54,9 +54,11 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
     registrations = []
     acknowledgements = []
     changes = []
+    endpoint_ids = []
     base_url = ""
 
     async def allocate(request):
+        endpoint_ids.append(request.query["epid"])
         return web.json_response(
             {"socketio": base_url + "/", "surl": base_url + "/push/", "connectparams": {}}
         )
@@ -65,7 +67,7 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
         return web.Response(text="test-session:180:180:websocket")
 
     async def register(request):
-        registrations.append((await request.json())["clientDescription"]["appId"])
+        registrations.append(await request.json())
         return web.Response(status=200)
 
     async def websocket(request):
@@ -98,6 +100,11 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
             await TeamsTrouter(auth, lambda: changes.append(True))._connect()
     finally:
         await runner.cleanup()
-    assert registrations == ["NextGenCalling", "SkypeSpacesWeb", "TeamsCDLWebWorker"]
+    assert [r["clientDescription"]["appId"] for r in registrations] == [
+        "NextGenCalling",
+        "SkypeSpacesWeb",
+        "TeamsCDLWebWorker",
+    ]
+    assert registrations[-1]["registrationId"] == endpoint_ids[0]
     assert len(changes) == 2  # Initial reconciliation and conversation update.
     assert json.loads(acknowledgements[0].split(":", 3)[3])["id"] == 1

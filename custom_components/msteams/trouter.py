@@ -202,7 +202,7 @@ class TeamsTrouter:
                     "templateKey": template,
                     "platformUIVersion": _VERSION,
                 },
-                "registrationId": str(uuid.uuid4()),
+                "registrationId": epid if app == "TeamsCDLWebWorker" else str(uuid.uuid4()),
                 "nodeId": "",
                 "transports": {
                     "TROUTER": [{"context": "", "path": info["surl"] + suffix, "ttl": 86400}]
