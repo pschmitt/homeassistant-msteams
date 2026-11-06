@@ -9,7 +9,7 @@
           "browser_daemon_entry_id": "Browser Daemon integration",
           "browser_daemon_override": "Override with a custom URL and cluster secret",
           "browser_daemon_url": "browser-daemon URL",
-          "browser_daemon_secret": "Cluster secret (blank: keep saved)",
+          "browser_daemon_secret": "Cluster secret",
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
