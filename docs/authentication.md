@@ -19,9 +19,10 @@ Select both rbw fields only when you want automated credential recovery.
 
 ## Browser-daemon profile
 
-The integration uses the configured Home Assistant browser-daemon connection
-when it is available, including its connection details. It opens or reuses a
-Teams page in the selected browser-daemon profile and exports the Teams
+Leave the URL and cluster secret empty to reuse the Home Assistant Browser
+Daemon integration, or enter an explicit connection, which then takes
+precedence and does not need that integration. A blank secret keeps the saved
+one; clearing the URL removes it. The integration opens or reuses a Teams page in the selected browser-daemon profile and exports the Teams
 authentication state to validate it. New setups default to `ha-msteams`, which
 the integration creates on first use. Existing configured profile names remain
 unchanged. Clear the profile field to use a throwaway browser instead; its

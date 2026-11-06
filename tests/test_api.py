@@ -442,3 +442,42 @@ async def test_send_message_places_channel_subject_in_properties():
         "mentions": "[]",
         "subject": "Title",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("explicit_url", "explicit_secret", "expected"),
+    [
+        ("https://own.example", "own", ("https://own.example", "own")),
+        (None, None, ("https://shared.example", "shared")),
+    ],
+)
+async def test_explicit_browser_connection_beats_integration(
+    monkeypatch, explicit_url, explicit_secret, expected
+):
+    """Only a blank URL falls back to the Browser Daemon integration's connection."""
+    import sys
+    import types
+
+    from custom_components.msteams import api
+    from custom_components.msteams.browser_auth import BrowserAuthError
+
+    shared = types.ModuleType("custom_components.browser_daemon")
+    shared.async_get_client = lambda hass: MagicMock(
+        base_url="https://shared.example", cluster_secret="shared"
+    )
+    monkeypatch.setitem(sys.modules, "custom_components.browser_daemon", shared)
+    used = {}
+
+    def client(_session, url, secret, **_kwargs):
+        used["connection"] = (url, secret)
+        return MagicMock()
+
+    monkeypatch.setattr(api, "TeamsBrowserDaemon", client)
+    monkeypatch.setattr(api, "acquire_browser_auth", AsyncMock(side_effect=BrowserAuthError()))
+
+    with pytest.raises(TeamsAuthError):
+        await TeamsAuth.async_from_browser_daemon(
+            MagicMock(), browser_daemon_url=explicit_url, secret=explicit_secret, hass=object()
+        )
+    assert used["connection"] == expected

@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import probatio as vol
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
     CONF_BROWSER_DAEMON_NODE_GROUP,
     CONF_BROWSER_DAEMON_PROFILE,
+    CONF_BROWSER_DAEMON_SECRET,
+    CONF_BROWSER_DAEMON_URL,
     CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
     CONF_ENABLE_PUSH,
@@ -35,6 +39,39 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 # UI-only value: persisted disabled rbw settings remain empty strings.
 RBW_DISABLED = "disabled"
+
+
+class InvalidBrowserDaemonConnection(Exception):
+    """The explicit browser-daemon connection is incomplete."""
+
+
+def browser_connection(submitted: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the connection to store; a blank URL uses the Browser Daemon integration."""
+    url = str(submitted.get(CONF_BROWSER_DAEMON_URL) or "").strip().rstrip("/")
+    if not url:
+        return {CONF_BROWSER_DAEMON_URL: "", CONF_BROWSER_DAEMON_SECRET: None}
+    # A blank secret keeps the saved one.
+    secret = str(submitted.get(CONF_BROWSER_DAEMON_SECRET) or "").strip() or saved.get(
+        CONF_BROWSER_DAEMON_SECRET
+    )
+    if urlsplit(url).scheme not in {"http", "https"} or not secret:
+        raise InvalidBrowserDaemonConnection
+    return {CONF_BROWSER_DAEMON_URL: url, CONF_BROWSER_DAEMON_SECRET: secret}
+
+
+def connection_schema(defaults: dict[str, Any]) -> dict[Any, Any]:
+    """The explicit browser-daemon connection. The cluster secret is never prefilled."""
+    browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
+    return {
+        data_entry_flow.Optional(
+            CONF_BROWSER_DAEMON_URL,
+            default=defaults.get(CONF_BROWSER_DAEMON_URL) or "",
+            visible=browser,
+        ): TextSelector(TextSelectorConfig(type=TextSelectorType.URL)),
+        data_entry_flow.Optional(CONF_BROWSER_DAEMON_SECRET, visible=browser): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+    }
 
 
 def rbw_schema(
@@ -110,10 +147,14 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 auth: TeamsAuth | None = None
+                connection: dict[str, Any] = {}
                 if use_browser_daemon:
                     profile = user_input.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE)
+                    connection = browser_connection(user_input, {})
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
+                        browser_daemon_url=connection[CONF_BROWSER_DAEMON_URL],
+                        secret=connection[CONF_BROWSER_DAEMON_SECRET],
                         profile=profile,
                         node_group=user_input.get(CONF_BROWSER_DAEMON_NODE_GROUP),
                         hass=self.hass,
@@ -143,6 +184,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             data={
                                 **self.reauth_entry.data,
                                 **user_input,
+                                **connection,
                                 **auth.export_data(),
                             },
                         )
@@ -155,6 +197,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title = auth.user_display_name or auth.user_email or "Teams Account"
                     entry_data = {
                         **user_input,
+                        **connection,
                         **auth.export_data(),
                         CONF_USE_BROWSER_DAEMON: use_browser_daemon,
                     }
@@ -162,6 +205,8 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             except AbortFlow:
                 raise
+            except InvalidBrowserDaemonConnection:
+                errors["base"] = "invalid_browser_daemon_connection"
             except TeamsAuthError as err:
                 _LOGGER.warning("Authentication failed during setup: %s", err)
                 errors["base"] = "auth_failed"
@@ -169,23 +214,25 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error during Teams setup: %s", err)
                 errors["base"] = "cannot_connect"
 
-        schema_dict: dict[Any, Any] = {}
-        if has_browser_daemon:
-            schema_dict[vol.Optional(CONF_USE_BROWSER_DAEMON, default=True)] = bool
-            schema_dict[
-                data_entry_flow.Optional(
-                    CONF_BROWSER_DAEMON_PROFILE,
-                    default=DEFAULT_PROFILE,
-                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
-                )
-            ] = str
-            schema_dict[
-                data_entry_flow.Optional(
-                    CONF_BROWSER_DAEMON_NODE_GROUP,
-                    default="",
-                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
-                )
-            ] = str
+        # An explicit connection works without the Browser Daemon integration.
+        schema_dict: dict[Any, Any] = {
+            vol.Optional(CONF_USE_BROWSER_DAEMON, default=has_browser_daemon): bool,
+            **connection_schema(user_input or {}),
+        }
+        schema_dict[
+            data_entry_flow.Optional(
+                CONF_BROWSER_DAEMON_PROFILE,
+                default=DEFAULT_PROFILE,
+                visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+            )
+        ] = str
+        schema_dict[
+            data_entry_flow.Optional(
+                CONF_BROWSER_DAEMON_NODE_GROUP,
+                default="",
+                visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+            )
+        ] = str
 
         file_mode = {"field": CONF_USE_BROWSER_DAEMON, "operator": "not_eq", "value": True}
         schema_dict[data_entry_flow.Optional(CONF_CREDENTIALS_FILE, visible=file_mode)] = str
@@ -237,16 +284,12 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Authenticate and update an existing config entry."""
         errors: dict[str, str] = {}
-        has_browser_daemon = "browser_daemon" in self.hass.config.components or bool(
-            self.hass.data.get("browser_daemon")
-        )
         effective_settings = {
             **(entry.data if entry else {}),
             **(entry.options if entry else {}),
         }
         if step_id == "reconfigure":
             defaults = {**effective_settings, **(user_input or {})}
-            has_browser_daemon = has_browser_daemon or CONF_USE_BROWSER_DAEMON in defaults
         else:
             defaults = {
                 **(entry.data if entry else {}),
@@ -269,13 +312,25 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 auth: TeamsAuth | None = None
+                connection: dict[str, Any] = {}
                 if use_browser_daemon:
                     profile = user_input.get(
                         CONF_BROWSER_DAEMON_PROFILE,
                         effective_settings.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
                     )
+                    connection = browser_connection(
+                        {
+                            CONF_BROWSER_DAEMON_URL: effective_settings.get(
+                                CONF_BROWSER_DAEMON_URL
+                            ),
+                            **user_input,
+                        },
+                        effective_settings,
+                    )
                     auth = await TeamsAuth.async_from_browser_daemon(
                         session=session,
+                        browser_daemon_url=connection[CONF_BROWSER_DAEMON_URL],
+                        secret=connection[CONF_BROWSER_DAEMON_SECRET],
                         profile=profile,
                         node_group=submitted_settings.get(CONF_BROWSER_DAEMON_NODE_GROUP),
                         hass=self.hass,
@@ -323,6 +378,9 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             if key in user_input and key in entry.options
                         }
                     )
+                    updated_options.update(
+                        {key: value for key, value in connection.items() if key in entry.options}
+                    )
                     persisted_settings = {
                         key: submitted_settings[key]
                         for key in (
@@ -339,6 +397,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             **entry.data,
                             **persisted_settings,
                             **user_input,
+                            **connection,
                             **auth.export_data(),
                             CONF_USE_BROWSER_DAEMON: use_browser_daemon,
                         },
@@ -349,6 +408,8 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             except AbortFlow:
                 raise
+            except InvalidBrowserDaemonConnection:
+                errors["base"] = "invalid_browser_daemon_connection"
             except TeamsAuthError as err:
                 _LOGGER.warning("Authentication failed during %s: %s", step_id, err)
                 errors["base"] = "auth_failed"
@@ -357,28 +418,27 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
 
         default_profile = defaults.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE)
-        schema_dict: dict[Any, Any] = {}
-        if has_browser_daemon:
-            schema_dict[
-                vol.Optional(
-                    CONF_USE_BROWSER_DAEMON,
-                    default=defaults.get(CONF_USE_BROWSER_DAEMON, False),
-                )
-            ] = bool
-            schema_dict[
-                data_entry_flow.Optional(
-                    CONF_BROWSER_DAEMON_PROFILE,
-                    default=default_profile,
-                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
-                )
-            ] = str
-            schema_dict[
-                data_entry_flow.Optional(
-                    CONF_BROWSER_DAEMON_NODE_GROUP,
-                    default=defaults.get(CONF_BROWSER_DAEMON_NODE_GROUP, ""),
-                    visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
-                )
-            ] = str
+        schema_dict: dict[Any, Any] = {
+            vol.Optional(
+                CONF_USE_BROWSER_DAEMON,
+                default=defaults.get(CONF_USE_BROWSER_DAEMON, False),
+            ): bool,
+            **connection_schema(defaults),
+        }
+        schema_dict[
+            data_entry_flow.Optional(
+                CONF_BROWSER_DAEMON_PROFILE,
+                default=default_profile,
+                visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+            )
+        ] = str
+        schema_dict[
+            data_entry_flow.Optional(
+                CONF_BROWSER_DAEMON_NODE_GROUP,
+                default=defaults.get(CONF_BROWSER_DAEMON_NODE_GROUP, ""),
+                visible={"field": CONF_USE_BROWSER_DAEMON, "value": True},
+            )
+        ] = str
 
         file_mode = {"field": CONF_USE_BROWSER_DAEMON, "operator": "not_eq", "value": True}
         schema_dict[

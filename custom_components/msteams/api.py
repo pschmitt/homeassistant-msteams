@@ -486,8 +486,8 @@ class TeamsAuth:
     ) -> TeamsAuth:
         """Acquire credentials automatically via browser-daemon."""
         url = browser_daemon_url or DEFAULT_BROWSER_DAEMON_URL
-        if hass is not None:
-            # Reuse the URL and secret of the browser_daemon integration, if set up.
+        if hass is not None and not browser_daemon_url:
+            # Without an explicit URL, reuse the browser_daemon integration's connection.
             try:
                 from custom_components.browser_daemon import async_get_client
 

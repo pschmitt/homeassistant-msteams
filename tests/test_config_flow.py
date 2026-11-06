@@ -329,6 +329,8 @@ async def test_reauth_persists_submitted_rbw_settings_to_options(returned_prefix
     assert result["type"] == "abort"
     auth_from_browser.assert_awaited_once_with(
         session=auth_from_browser.await_args.kwargs["session"],
+        browser_daemon_url="",
+        secret=None,
         profile="work",
         node_group="cloud",
         hass=flow.hass,
@@ -804,3 +806,61 @@ def test_authentication_fields_have_translated_labels(language):
     for section in ("config", "options"):
         assert translated[section]["error"]["rbw_incomplete"]
     assert translated["config"]["abort"]["reconfigure_successful"]
+
+
+@pytest.mark.asyncio
+async def test_browser_connection_fields_never_prefill_secret():
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    flow.hass.config_entries.async_entries.return_value = []
+    result = await flow.async_step_user()
+    markers = {key.schema: key for key in result["data_schema"].schema}
+    # An explicit connection does not need the Browser Daemon integration.
+    assert CONF_USE_BROWSER_DAEMON in markers
+    assert markers["browser_daemon_url"].visible == {
+        "field": CONF_USE_BROWSER_DAEMON,
+        "value": True,
+    }
+    assert "browser_daemon_secret" not in result["data_schema"]({})
+
+
+@pytest.mark.parametrize(
+    ("submitted", "saved", "expected"),
+    [
+        ({}, {"browser_daemon_secret": "old"}, ("", None)),
+        (
+            {"browser_daemon_url": "https://bd.example/", "browser_daemon_secret": " new "},
+            {},
+            ("https://bd.example", "new"),
+        ),
+        (
+            {"browser_daemon_url": "https://bd.example", "browser_daemon_secret": ""},
+            {"browser_daemon_secret": "old"},
+            ("https://bd.example", "old"),
+        ),
+    ],
+)
+def test_browser_connection_resolves(submitted, saved, expected):
+    from custom_components.msteams.config_flow import browser_connection
+
+    result = browser_connection(submitted, saved)
+    assert (result["browser_daemon_url"], result["browser_daemon_secret"]) == expected
+
+
+@pytest.mark.parametrize(
+    "submitted",
+    [
+        {"browser_daemon_url": "https://bd.example"},
+        {"browser_daemon_url": "bd.example", "browser_daemon_secret": "s"},
+    ],
+)
+def test_browser_connection_rejects_incomplete(submitted):
+    from custom_components.msteams.config_flow import (
+        InvalidBrowserDaemonConnection,
+        browser_connection,
+    )
+
+    with pytest.raises(InvalidBrowserDaemonConnection):
+        browser_connection(submitted, {})

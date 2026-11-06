@@ -6,6 +6,8 @@
         "description": "Automatisch über Browser Daemon authentifizieren oder eine Anmeldedatei bzw. ein OAuth-Refresh-Token angeben.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
+          "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+          "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
@@ -23,6 +25,8 @@
         "description": "Authentifizierungs-Token über Browser Daemon neu laden oder aktualisierte Anmeldedaten angeben.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
+          "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+          "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
@@ -38,6 +42,8 @@
         "description": "Aktualisiere die Authentifizierungseinstellungen dieses Teams-Kontos. Melde dich erneut an, um die Änderungen zu speichern.",
         "data": {
           "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
+          "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
+          "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
@@ -53,7 +59,8 @@
       "rbw_incomplete": "Bitte sowohl eine rbw-Integration als auch eine Eintrags-ID auswählen oder beide Felder leer lassen.",
       "missing_credentials": "Bitte Browser Daemon Import wählen oder eine Anmeldedatei bzw. ein Refresh-Token angeben.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
-      "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen."
+      "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen.",
+      "invalid_browser_daemon_connection": "Eine eigene browser-daemon-Verbindung braucht eine http(s)-URL und ein Cluster-Geheimnis."
     },
     "abort": {
       "already_configured": "Dieses Microsoft Teams-Konto ist bereits konfiguriert.",
@@ -88,10 +95,10 @@
             "title": "Teams neu anmelden",
             "description": "Versuche die konfigurierte Anmeldemethode erneut. Gib bei Datei- oder Token-Anmeldung eine aktualisierte Anmeldedatei oder ein neues Refresh-Token an. Die Browser-Anmeldung verwendet das konfigurierte Profil und optional rbw. Schließe manuelle Microsoft-Abfragen in diesem Profil ab und versuche es erneut. Offene Anmeldeseiten bleiben 15 Minuten erhalten.",
             "data": {
-              "browser_daemon_url": "Browser daemon URL",
+              "browser_daemon_url": "browser-daemon-URL (leer: Browser-Daemon-Integration verwenden)",
               "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
               "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
-              "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichert beibehalten)",
+              "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
               "credentials_file": "Pfad zur Anmeldedatei",
               "refresh_token": "OAuth-Refresh-Token",
               "tenant_id": "Mandanten-ID"

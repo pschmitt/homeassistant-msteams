@@ -238,6 +238,26 @@ if "homeassistant" not in sys.modules:
     sys.modules["homeassistant.helpers.aiohttp_client"] = aiohttp_client
     helpers.aiohttp_client = aiohttp_client
 
+    # helpers.selector
+    selector = types.ModuleType("homeassistant.helpers.selector")
+
+    class TextSelectorType(enum.StrEnum):
+        PASSWORD = "password"
+        URL = "url"
+
+    class TextSelector:
+        def __init__(self, config=None):
+            self.config = config
+
+        def __call__(self, value):
+            return value
+
+    selector.TextSelector = TextSelector
+    selector.TextSelectorConfig = dict
+    selector.TextSelectorType = TextSelectorType
+    sys.modules["homeassistant.helpers.selector"] = selector
+    helpers.selector = selector
+
     # helpers.config_validation
     config_validation = types.ModuleType("homeassistant.helpers.config_validation")
     config_validation.string = str

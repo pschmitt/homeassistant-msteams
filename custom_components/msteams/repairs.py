@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
@@ -129,7 +130,9 @@ class TeamsAuthRepairFlow(RepairsFlow):
                     CONF_BROWSER_DAEMON_NODE_GROUP,
                     default=settings.get(CONF_BROWSER_DAEMON_NODE_GROUP, ""),
                 ): str,
-                vol.Optional(CONF_BROWSER_DAEMON_SECRET): str,
+                vol.Optional(CONF_BROWSER_DAEMON_SECRET): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
             }
         else:
             fields = {
