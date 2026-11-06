@@ -225,13 +225,15 @@ async def acquire_browser_auth(
 
 
 def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
-    """Wait for both the refresh credential and an unexpired Substrate JWT."""
+    """Wait for either the refresh credential or unexpired access tokens."""
     import base64
     import json
 
     refresh_token = None
     refresh_expires = None
     valid_substrate = False
+    valid_spaces = False
+    spaces_token = None
     for value in (data.get("local_storage") or {}).values():
         try:
             entry = json.loads(value)
@@ -242,7 +244,8 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
             ):
                 refresh_token = entry["secret"]
                 refresh_expires = entry.get("expiresOn")
-            if "SubstrateSearch" in entry.get("target", ""):
+            target = entry.get("target", "")
+            if "SubstrateSearch" in target:
                 token = entry.get("secret", "")
                 if not token.startswith("ey"):
                     continue
@@ -251,19 +254,32 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
                 claims = json.loads(base64.urlsafe_b64decode(payload))
                 if isinstance(claims.get("exp"), (int, float)) and claims["exp"] > time.time():
                     valid_substrate = True
+            if "spaces.skype.com" in target:
+                token = entry.get("secret", "")
+                if not token.startswith("ey"):
+                    continue
+                payload = token.split(".")[1]
+                payload += "=" * (-len(payload) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+                if isinstance(claims.get("exp"), (int, float)) and claims["exp"] > time.time():
+                    valid_spaces = True
+                    spaces_token = token
         except (ValueError, AttributeError, TypeError, IndexError):
             continue
-    if not refresh_token or not valid_substrate:
-        raise BrowserAuthError("Teams session is not ready")
-    # A SPA refresh token lives 24h from the interactive sign-in and cannot be extended. A
-    # freshly opened Teams page still holds the stale one until it has signed in silently, so
-    # keep polling until MSAL has stored a renewed token.
-    try:
-        if refresh_expires is not None and float(refresh_expires) < time.time() + 3600:
-            raise BrowserAuthError("Teams refresh token is (almost) expired; waiting for renewal")
-    except (TypeError, ValueError):
-        pass
-    return {"refresh_token": refresh_token}
+
+    if refresh_token and valid_substrate:
+        try:
+            if refresh_expires is not None and float(refresh_expires) < time.time() + 3600:
+                raise BrowserAuthError("Teams refresh token is (almost) expired; waiting for renewal")
+        except (TypeError, ValueError):
+            pass
+        return {"refresh_token": refresh_token, "spaces_token": spaces_token}
+
+    if valid_substrate and valid_spaces and spaces_token:
+        # Cache encrypted by MSAL Browser, but unexpired access tokens are available.
+        return {"refresh_token": "", "spaces_token": spaces_token}
+
+    raise BrowserAuthError("Teams session is not ready")
 
 
 async def _main() -> int:
@@ -271,6 +287,7 @@ async def _main() -> int:
     import json
     import os
     import sys
+    from urllib.parse import quote
 
     import aiohttp
 
@@ -283,11 +300,58 @@ async def _main() -> int:
             async with session.get(url.rstrip("/") + "/", timeout=10):
                 pass
         client = BrowserDaemon(session, url, secret, client="Home Assistant · Teams")
-        data, _ = await acquire_browser_auth(
+        data, creds = await acquire_browser_auth(
             client,
             os.environ.get("TEAMS_MCP_BROWSER_DAEMON_PROFILE", "work"),
             _validate_refresh_token,
         )
+
+        spaces_token = creds.get("spaces_token")
+        cookies = data.setdefault("cookies", [])
+        has_skype = any(c.get("name") == "skypetoken_asm" for c in cookies)
+
+        if not has_skype and spaces_token:
+            try:
+                async with session.post(
+                    "https://authsvc.teams.microsoft.com/v1.0/authz",
+                    headers={"Authorization": f"Bearer {spaces_token}", "Content-Type": "application/json"},
+                    json={},
+                    timeout=15,
+                ) as auth_res:
+                    if auth_res.status == 200:
+                        auth_json = await auth_res.json()
+                        skype_token = auth_json.get("tokens", {}).get("skypeToken")
+                        if skype_token:
+                            now_sec = time.time()
+                            for domain in (
+                                ".asyncgw.teams.microsoft.com",
+                                ".asm.skype.com",
+                                "teams.microsoft.com",
+                                "teams.cloud.microsoft",
+                            ):
+                                cookies.append({
+                                    "name": "skypetoken_asm",
+                                    "value": skype_token,
+                                    "domain": domain,
+                                    "path": "/",
+                                    "expires": now_sec + 86400,
+                                    "httpOnly": True,
+                                    "secure": True,
+                                    "sameSite": "None",
+                                })
+                            cookies.append({
+                                "name": "authtoken",
+                                "value": f"Bearer%3D{quote(spaces_token)}",
+                                "domain": "teams.microsoft.com",
+                                "path": "/",
+                                "expires": now_sec + 86400,
+                                "httpOnly": False,
+                                "secure": True,
+                                "sameSite": "None",
+                            })
+            except Exception as err:
+                _LOGGER.debug("Could not derive skypeToken via authsvc: %s", err)
+
         json.dump(data, sys.stdout)
     return 0
 

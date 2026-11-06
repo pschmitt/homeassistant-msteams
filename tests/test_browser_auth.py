@@ -387,3 +387,30 @@ def test_node_readiness_requires_refresh_and_unexpired_substrate():
     jwt = f"eyJhbGciOiJub25lIn0.{jwt_body}.fake"
     data["local_storage"]["access"] = json.dumps({"target": "SubstrateSearch", "secret": jwt})
     assert _validate_refresh_token(data)["refresh_token"] == "fake"
+
+
+def test_node_readiness_accepts_encrypted_cache_with_spaces_and_substrate():
+    import base64
+    import json
+    import time
+
+    from custom_components.msteams.browser_auth import _validate_refresh_token
+
+    jwt_body = (
+        base64.urlsafe_b64encode(json.dumps({"exp": time.time() + 60}).encode())
+        .decode()
+        .rstrip("=")
+    )
+    jwt = f"eyJhbGciOiJub25lIn0.{jwt_body}.fake"
+
+    # Encrypted cache entry without credentialType
+    encrypted_rt = json.dumps({"id": "123", "nonce": "abc", "data": "ciphertext"})
+    data = {
+        "local_storage": {
+            "refreshtoken": encrypted_rt,
+            "substrate": json.dumps({"target": "SubstrateSearch", "secret": jwt}),
+            "spaces": json.dumps({"target": "spaces.skype.com", "secret": jwt}),
+        }
+    }
+    creds = _validate_refresh_token(data)
+    assert creds["spaces_token"] == jwt
