@@ -270,7 +270,9 @@ def _validate_refresh_token(data: dict[str, Any]) -> dict[str, Any]:
     if refresh_token and valid_substrate:
         try:
             if refresh_expires is not None and float(refresh_expires) < time.time() + 3600:
-                raise BrowserAuthError("Teams refresh token is (almost) expired; waiting for renewal")
+                raise BrowserAuthError(
+                    "Teams refresh token is (almost) expired; waiting for renewal"
+                )
         except (TypeError, ValueError):
             pass
         return {"refresh_token": refresh_token, "spaces_token": spaces_token}
@@ -314,7 +316,10 @@ async def _main() -> int:
             try:
                 async with session.post(
                     "https://authsvc.teams.microsoft.com/v1.0/authz",
-                    headers={"Authorization": f"Bearer {spaces_token}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {spaces_token}",
+                        "Content-Type": "application/json",
+                    },
                     json={},
                     timeout=15,
                 ) as auth_res:
@@ -329,26 +334,30 @@ async def _main() -> int:
                                 "teams.microsoft.com",
                                 "teams.cloud.microsoft",
                             ):
-                                cookies.append({
-                                    "name": "skypetoken_asm",
-                                    "value": skype_token,
-                                    "domain": domain,
+                                cookies.append(
+                                    {
+                                        "name": "skypetoken_asm",
+                                        "value": skype_token,
+                                        "domain": domain,
+                                        "path": "/",
+                                        "expires": now_sec + 86400,
+                                        "httpOnly": True,
+                                        "secure": True,
+                                        "sameSite": "None",
+                                    }
+                                )
+                            cookies.append(
+                                {
+                                    "name": "authtoken",
+                                    "value": f"Bearer%3D{quote(spaces_token)}",
+                                    "domain": "teams.microsoft.com",
                                     "path": "/",
                                     "expires": now_sec + 86400,
-                                    "httpOnly": True,
+                                    "httpOnly": False,
                                     "secure": True,
                                     "sameSite": "None",
-                                })
-                            cookies.append({
-                                "name": "authtoken",
-                                "value": f"Bearer%3D{quote(spaces_token)}",
-                                "domain": "teams.microsoft.com",
-                                "path": "/",
-                                "expires": now_sec + 86400,
-                                "httpOnly": False,
-                                "secure": True,
-                                "sameSite": "None",
-                            })
+                                }
+                            )
             except Exception as err:
                 _LOGGER.debug("Could not derive skypeToken via authsvc: %s", err)
 
