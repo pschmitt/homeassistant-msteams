@@ -13,7 +13,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
-from .config_flow import InvalidBrowserDaemonConnection, browser_connection, connection_schema
+from .config_flow import InvalidBrowserDaemonConnection, browser_connection
 from .const import (
     CONF_BROWSER_DAEMON_ENTRY_ID,
     CONF_BROWSER_DAEMON_NODE_GROUP,
@@ -32,6 +32,7 @@ from .const import (
     DOMAIN,
     TEAMS_CLIENT_ID,
 )
+from .setup_form import browser_daemon_fields
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,17 +123,7 @@ class TeamsAuthRepairFlow(RepairsFlow):
                 errors["base"] = "cannot_connect"
 
         if use_browser:
-            fields = {
-                **connection_schema(self.hass, settings, browser_toggle=False),
-                vol.Optional(
-                    CONF_BROWSER_DAEMON_PROFILE,
-                    default=settings.get(CONF_BROWSER_DAEMON_PROFILE, DEFAULT_PROFILE),
-                ): str,
-                vol.Optional(
-                    CONF_BROWSER_DAEMON_NODE_GROUP,
-                    default=settings.get(CONF_BROWSER_DAEMON_NODE_GROUP, ""),
-                ): str,
-            }
+            fields = browser_daemon_fields(self.hass, settings, profile=DEFAULT_PROFILE)
         else:
             fields = {
                 vol.Optional(

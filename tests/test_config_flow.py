@@ -15,7 +15,7 @@ from custom_components.msteams.api import TeamsAuthError
 from custom_components.msteams.config_flow import (
     TeamsConfigFlow,
     TeamsOptionsFlow,
-    rbw_schema,
+    setup_schema,
 )
 from custom_components.msteams.const import (
     CONF_BROWSER_DAEMON_NODE_GROUP,
@@ -30,6 +30,7 @@ from custom_components.msteams.const import (
     CONF_REFRESH_TOKEN,
     CONF_TENANT_ID,
     CONF_USE_BROWSER_DAEMON,
+    CONF_USER_DISPLAY_NAME,
     CONF_USER_MRI,
 )
 
@@ -41,25 +42,18 @@ async def test_browser_fields_have_native_visibility_and_named_default():
     flow.hass.config.components = {"browser_daemon"}
     flow.hass.config_entries.async_entries.return_value = []
     result = await flow.async_step_user()
-    markers = {key.schema: key for key in result["data_schema"].schema}
+    markers = _markers(result)
     assert markers[CONF_BROWSER_DAEMON_PROFILE].default() == "ha-msteams"
-    assert markers[CONF_BROWSER_DAEMON_PROFILE].visible == {
-        "field": CONF_USE_BROWSER_DAEMON,
-        "value": True,
-    }
-    assert markers[CONF_CREDENTIALS_FILE].visible == {
-        "field": CONF_USE_BROWSER_DAEMON,
-        "operator": "not_eq",
-        "value": True,
-    }
-    assert CONF_RBW_ITEM_ID not in markers
-    assert markers[CONF_PREFER_PASSKEY].visible == [
-        {"field": CONF_USE_BROWSER_DAEMON, "value": True},
-        {"field": CONF_RBW_ENTRY_ID, "operator": "exists"},
+    assert markers[CONF_BROWSER_DAEMON_PROFILE].visible == [
+        {"field": CONF_USE_BROWSER_DAEMON, "value": True}
     ]
+    assert CONF_RBW_ITEM_ID not in markers
+    assert markers[CONF_PREFER_PASSKEY].visible == {
+        "field": CONF_RBW_ENTRY_ID,
+        "operator": "exists",
+    }
 
 
-@pytest.mark.parametrize("browser_only", [False, True])
 @pytest.mark.parametrize(
     ("stored", "expected"),
     [
@@ -69,70 +63,104 @@ async def test_browser_fields_have_native_visibility_and_named_default():
         ({CONF_RBW_ENTRY_ID: "saved-vault"}, "saved-vault"),
     ],
 )
-def test_rbw_picker_only_suggests_a_saved_vault(browser_only, stored, expected):
+def test_rbw_picker_only_suggests_a_saved_vault(stored, expected):
     hass = MagicMock()
-    hass.config_entries.async_entries.return_value = [MagicMock(entry_id="vault")]
-    schema = vol.Schema(
-        rbw_schema(hass, {CONF_USE_BROWSER_DAEMON: True, **stored}, browser_only=browser_only)
-    )
-    markers = {key.schema: key for key in schema.schema}
+    hass.config_entries.async_entries.return_value = [MagicMock(entry_id="vault", disabled_by=None)]
+    schema = setup_schema(hass, stored, use_default=True)
+    credentials = next(v for k, v in schema.schema.items() if str(k) == "credentials").schema
+    markers = {str(key): key for key in credentials.schema}
     assert markers[CONF_RBW_ENTRY_ID].description == {"suggested_value": expected}
     # Clearing the picker must not bring a saved vault back.
-    assert CONF_RBW_ENTRY_ID not in schema({})
-    selected = {"field": CONF_RBW_ENTRY_ID, "operator": "exists"}
-    conditions = [selected]
-    if browser_only:
-        conditions.insert(0, {"field": CONF_USE_BROWSER_DAEMON, "value": True})
-    assert markers[CONF_PREFER_PASSKEY].visible == conditions
-
-
-def test_rbw_picker_needs_an_rbw_integration():
-    hass = MagicMock()
-    hass.config_entries.async_entries.return_value = []
-    assert CONF_RBW_ENTRY_ID not in {
-        str(key) for key in rbw_schema(hass, {CONF_USE_BROWSER_DAEMON: True})
+    assert CONF_RBW_ENTRY_ID not in credentials({})
+    assert markers[CONF_PREFER_PASSKEY].visible == {
+        "field": CONF_RBW_ENTRY_ID,
+        "operator": "exists",
     }
 
 
-def test_native_rbw_visibility_serializes_and_strips_hidden_fields():
-    """Exercise real HA when preloaded instead of the lightweight test stubs."""
-    from homeassistant import data_entry_flow
-    from homeassistant.helpers import config_validation as cv
-
-    if not hasattr(data_entry_flow, "_strip_hidden_fields"):
-        pytest.skip("Requires real Home Assistant to be imported before tests/conftest.py")
+def test_pickers_are_grey_without_their_integration():
     hass = MagicMock()
-    hass.config_entries.async_entries.return_value = [MagicMock(entry_id="vault", title="Vault")]
-    schema = vol.Schema(
+    hass.config_entries.async_entries.return_value = []
+    schema = setup_schema(hass, {}, use_default=False)
+    sections = {str(key): value.schema.schema for key, value in schema.schema.items()}
+    assert (
+        next(
+            v for k, v in sections["browser_daemon"].items() if str(k) == "browser_daemon_entry_id"
+        ).config["read_only"]
+        is True
+    )
+    assert (
+        next(v for k, v in sections["credentials"].items() if str(k) == CONF_RBW_ENTRY_ID).config[
+            "read_only"
+        ]
+        is True
+    )
+
+
+def test_dialog_order_and_sections_match_hrworks():
+    hass = MagicMock()
+    hass.config_entries.async_entries.return_value = []
+    schema = setup_schema(
+        hass,
+        {},
+        use_default=True,
+        own={vol.Optional(CONF_USER_DISPLAY_NAME): str},
+    )
+    assert [str(key) for key in schema.schema] == [
+        CONF_USER_DISPLAY_NAME,
+        "browser_daemon",
+        "credentials",
+        "without_browser_daemon",
+    ]
+    manual = next(v for k, v in schema.schema.items() if str(k) == "without_browser_daemon")
+    assert manual.options["collapsed"] is True
+
+
+def test_rbw_stays_visible_with_browser_daemon_off():
+    hass = MagicMock()
+    hass.config_entries.async_entries.return_value = [MagicMock(entry_id="vault")]
+    credentials = next(
+        v
+        for k, v in setup_schema(hass, {}, use_default=False).schema.items()
+        if str(k) == "credentials"
+    ).schema
+    marker = next(k for k in credentials.schema if str(k) == CONF_RBW_ENTRY_ID)
+    assert getattr(marker, "visible", None) is None
+
+
+@pytest.mark.asyncio
+async def test_options_keep_the_sign_in_settings():
+    entry = MagicMock()
+    entry.data = {CONF_USE_BROWSER_DAEMON: True}
+    entry.options = {CONF_RBW_ENTRY_ID: "vault", CONF_RBW_ITEM_ID: "item"}
+    flow = TeamsOptionsFlow()
+    flow.handler = "test_entry"
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_get_known_entry.return_value = entry
+    form = await flow.async_step_init()
+    assert CONF_RBW_ENTRY_ID not in _markers(form)
+    result = await flow.async_step_init({CONF_ENABLE_PUSH: False})
+    assert result["data"] == {
+        CONF_RBW_ENTRY_ID: "vault",
+        CONF_RBW_ITEM_ID: "item",
+        CONF_ENABLE_PUSH: False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_rbw_without_browser_daemon_explains_the_problem():
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    flow.hass.config_entries.async_entries.return_value = []
+    result = await flow.async_step_user(
         {
-            vol.Optional(CONF_USE_BROWSER_DAEMON, default=True): bool,
-            **rbw_schema(hass, {}, browser_only=True),
+            "browser_daemon": {CONF_USE_BROWSER_DAEMON: False},
+            "credentials": {CONF_RBW_ENTRY_ID: "v"},
         }
     )
-    fields = vol.to_field_list(schema, custom_serializer=cv.custom_serializer)
-    data_entry_flow.add_visible_conditions_to_serialized_schema(schema, fields)
-    passkey = next(field for field in fields if field["name"] == CONF_PREFER_PASSKEY)
-    assert passkey["visible"] == [
-        {"field": CONF_USE_BROWSER_DAEMON, "value": True},
-        {"field": CONF_RBW_ENTRY_ID, "operator": "exists"},
-    ]
-    for browser, selected, expected_hidden in (
-        (True, "", {CONF_PREFER_PASSKEY}),
-        (False, "vault", {CONF_RBW_ENTRY_ID, CONF_PREFER_PASSKEY}),
-        (True, "vault", set()),
-    ):
-        visible_schema, submitted = data_entry_flow._strip_hidden_fields(
-            schema,
-            {
-                CONF_USE_BROWSER_DAEMON: browser,
-                CONF_RBW_ENTRY_ID: selected,
-                CONF_PREFER_PASSKEY: False,
-            },
-        )
-        validated = visible_schema(submitted)
-        assert not expected_hidden.intersection(validated)
-        if browser and selected == "vault":
-            assert validated[CONF_PREFER_PASSKEY] is False
+    assert result["errors"] == {"base": "rbw_needs_browser_daemon"}
 
 
 @pytest.mark.parametrize("cleared", [{}, {CONF_RBW_ENTRY_ID: ""}])
@@ -156,25 +184,6 @@ async def test_user_normalizes_cleared_picker_before_authentication(cleared, hid
     assert result["type"] == "create_entry"
     assert authenticate.await_args.kwargs[CONF_RBW_ENTRY_ID] == ""
     assert authenticate.await_args.kwargs[CONF_RBW_ITEM_ID] == ""
-    assert result["data"][CONF_RBW_ENTRY_ID] == ""
-    assert result["data"][CONF_RBW_ITEM_ID] == ""
-    assert supplied.get(CONF_RBW_ENTRY_ID) == cleared.get(CONF_RBW_ENTRY_ID)
-
-
-@pytest.mark.parametrize("cleared", [{}, {CONF_RBW_ENTRY_ID: ""}])
-@pytest.mark.parametrize("hidden", [{}, {CONF_RBW_ITEM_ID: "stale-item"}])
-@pytest.mark.asyncio
-async def test_options_normalizes_cleared_picker_and_clears_old_item(cleared, hidden):
-    entry = MagicMock()
-    entry.data = {CONF_USE_BROWSER_DAEMON: True}
-    entry.options = {CONF_RBW_ENTRY_ID: "old-vault", CONF_RBW_ITEM_ID: "old-item"}
-    flow = TeamsOptionsFlow()
-    flow.handler = "test_entry"
-    flow.hass = MagicMock()
-    flow.hass.config_entries.async_get_known_entry.return_value = entry
-    supplied = {**cleared, **hidden}
-    result = await flow.async_step_init(supplied)
-    assert result["type"] == "create_entry"
     assert result["data"][CONF_RBW_ENTRY_ID] == ""
     assert result["data"][CONF_RBW_ITEM_ID] == ""
     assert supplied.get(CONF_RBW_ENTRY_ID) == cleared.get(CONF_RBW_ENTRY_ID)
@@ -204,9 +213,8 @@ async def test_config_flow_manual_success():
     assert result["data"]["refresh_token"] == "valid_token_123"
 
 
-@pytest.mark.parametrize("rbw", [{}, {CONF_RBW_ENTRY_ID: "unused-vault"}])
 @pytest.mark.asyncio
-async def test_config_flow_credentials_file_success(rbw):
+async def test_config_flow_credentials_file_success():
     """Test successful configuration via credentials file."""
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
@@ -235,7 +243,6 @@ async def test_config_flow_credentials_file_success(rbw):
             {
                 CONF_CREDENTIALS_FILE: "/tmp/fake_creds.json",
                 CONF_USE_BROWSER_DAEMON: False,
-                **rbw,
             }
         )
 
@@ -434,56 +441,6 @@ async def test_item_step_takes_a_typed_id_when_rbw_is_unavailable(monkeypatch):
     assert selector.config["custom_value"] is True
 
 
-@pytest.mark.parametrize(
-    ("chosen", "expected"), [("saved_vault", "saved_item"), ("other_vault", "only")]
-)
-@pytest.mark.asyncio
-async def test_options_item_step_preselects_and_returns_to_the_form(monkeypatch, chosen, expected):
-    monkeypatch.setitem(
-        sys.modules,
-        "custom_components.rbw",
-        types.SimpleNamespace(
-            async_list_items=AsyncMock(return_value=[{"id": "only", "name": "Only", "fields": []}])
-        ),
-    )
-    entry = MagicMock()
-    entry.data = {CONF_USE_BROWSER_DAEMON: True}
-    entry.options = {CONF_RBW_ENTRY_ID: "saved_vault", CONF_RBW_ITEM_ID: "saved_item"}
-    flow = TeamsOptionsFlow()
-    flow.handler = "test_entry"
-    flow.hass = MagicMock()
-    flow.hass.config_entries.async_get_known_entry.return_value = entry
-    form = await flow.async_step_init({CONF_RBW_ENTRY_ID: chosen, CONF_ENABLE_PUSH: False})
-    assert form["step_id"] == "rbw_item"
-    assert next(iter(form["data_schema"].schema)).default() == expected
-    result = await flow.async_step_rbw_item({CONF_RBW_ITEM_ID: expected})
-    assert result["type"] == "create_entry"
-    assert result["data"] == {
-        CONF_RBW_ENTRY_ID: chosen,
-        CONF_RBW_ITEM_ID: expected,
-        CONF_ENABLE_PUSH: False,
-    }
-
-
-@pytest.mark.asyncio
-async def test_options_blank_item_keeps_the_chosen_vault():
-    entry = MagicMock()
-    entry.data = {CONF_USE_BROWSER_DAEMON: True}
-    entry.options = {}
-    options_flow = TeamsOptionsFlow()
-    options_flow.handler = "test_entry"
-    options_flow.hass = MagicMock()
-    options_flow.hass.config_entries.async_get_known_entry.return_value = entry
-
-    result = await options_flow.async_step_init(
-        {CONF_RBW_ENTRY_ID: "chosen_vault", CONF_RBW_ITEM_ID: ""}
-    )
-
-    assert result["type"] == "form"
-    assert result["errors"] == {"base": "rbw_incomplete"}
-    assert _suggested_vault(result) == "chosen_vault"
-
-
 @pytest.mark.asyncio
 async def test_reauth_item_step_keeps_effective_existing_settings():
     """With the vault still chosen, the saved item is preselected and details are kept."""
@@ -531,8 +488,36 @@ async def test_reauth_item_step_keeps_effective_existing_settings():
 
 
 def _suggested_vault(result):
-    markers = {key.schema: key for key in result["data_schema"].schema}
-    return markers[CONF_RBW_ENTRY_ID].description["suggested_value"]
+    return _markers(result)[CONF_RBW_ENTRY_ID].description["suggested_value"]
+
+
+def _sections(result):
+    return [
+        (key, value)
+        for key, value in result["data_schema"].schema.items()
+        if hasattr(value, "schema")
+    ]
+
+
+def _markers(result):
+    markers = {
+        str(key): key
+        for key, value in result["data_schema"].schema.items()
+        if not hasattr(value, "schema")
+    }
+    for _key, value in _sections(result):
+        markers.update({str(key): key for key in value.schema.schema})
+    return markers
+
+
+def _defaults(result):
+    values = {}
+    for key, value in result["data_schema"].schema.items():
+        if hasattr(value, "schema"):
+            values.update(value.schema({}))
+        elif not isinstance(getattr(key, "default", None), vol.Undefined):
+            values[str(key)] = key.default()
+    return values
 
 
 def reconfigure_setup(entry):
@@ -555,7 +540,7 @@ def reconfigure_setup(entry):
     return flow
 
 
-@pytest.mark.parametrize("step", ["reconfigure", "reauth_confirm", "options"])
+@pytest.mark.parametrize("step", ["reconfigure", "reauth_confirm"])
 @pytest.mark.asyncio
 async def test_existing_flow_shows_stored_empty_vault_as_no_vault(step):
     entry = MagicMock()
@@ -577,9 +562,9 @@ async def test_existing_flow_shows_stored_empty_vault_as_no_vault(step):
         flow.reauth_entry = entry
         flow.hass.config_entries.async_entries.return_value = [MagicMock(entry_id="vault")]
         result = await getattr(flow, f"async_step_{step}")()
-    markers = {key.schema: key for key in result["data_schema"].schema}
+    markers = _markers(result)
     assert markers[CONF_RBW_ENTRY_ID].description == {"suggested_value": None}
-    assert CONF_RBW_ENTRY_ID not in result["data_schema"]({})
+    assert CONF_RBW_ENTRY_ID not in _defaults(result)
     assert entry.options[CONF_RBW_ENTRY_ID] == ""
 
 
@@ -606,7 +591,7 @@ async def test_reconfigure_form_uses_effective_defaults_without_refresh_token():
 
     result = await flow.async_step_reconfigure()
 
-    defaults = result["data_schema"]({})
+    defaults = _defaults(result)
     assert result["step_id"] == "reconfigure"
     assert defaults[CONF_USE_BROWSER_DAEMON] is True
     assert defaults[CONF_BROWSER_DAEMON_PROFILE] == "options_profile"
@@ -731,7 +716,7 @@ async def test_reconfigure_errors_keep_submitted_nonsecret_values(auth_error, ex
     ):
         result = await flow.async_step_reconfigure(user_input)
 
-    defaults = result["data_schema"]({})
+    defaults = _defaults(result)
     assert result["errors"] == {"base": expected_error}
     assert defaults[CONF_BROWSER_DAEMON_PROFILE] == "entered_profile"
     assert defaults[CONF_TENANT_ID] == "entered_tenant"
@@ -750,7 +735,6 @@ async def test_reconfigure_rejects_half_rbw_pair_from_effective_settings():
         {CONF_RBW_ENTRY_ID: "rbw_entry", CONF_RBW_ITEM_ID: "", CONF_USE_BROWSER_DAEMON: True}
     )
 
-    defaults = result["data_schema"]({})
     assert result["errors"] == {"base": "rbw_incomplete"}
     assert _suggested_vault(result) == "rbw_entry"
     flow.hass.config_entries.async_update_entry.assert_not_called()
@@ -824,7 +808,7 @@ async def test_file_reconfigure_does_not_enable_installed_browser_integration():
     flow = reconfigure_setup(entry)
     flow.hass.config.components = {"browser_daemon"}
     form = await flow.async_step_reconfigure()
-    assert form["data_schema"]({})[CONF_USE_BROWSER_DAEMON] is False
+    assert _defaults(form)[CONF_USE_BROWSER_DAEMON] is False
     auth = MagicMock()
     auth.user_mri = "8:orgid:alice"
     auth.export_data.return_value = {CONF_USER_MRI: auth.user_mri}
@@ -850,14 +834,15 @@ async def test_file_reconfigure_does_not_enable_installed_browser_integration():
 def test_authentication_fields_have_translated_labels(language):
     root = Path(__file__).resolve().parents[1] / "custom_components" / "msteams"
     translated = json.loads((root / "translations" / f"{language}.json").read_text())
-    fields = {CONF_RBW_ENTRY_ID, CONF_PREFER_PASSKEY}
-    for section in ("config", "options"):
-        assert CONF_RBW_ITEM_ID in translated[section]["step"]["rbw_item"]["data"]
+    assert CONF_RBW_ITEM_ID in translated["config"]["step"]["rbw_item"]["data"]
     for step in ("user", "reauth_confirm", "reconfigure"):
-        assert fields <= translated["config"]["step"][step]["data"].keys()
-    assert fields | {CONF_ENABLE_PUSH} <= translated["options"]["step"]["init"]["data"].keys()
-    for section in ("config", "options"):
-        assert translated[section]["error"]["rbw_incomplete"]
+        sections = translated["config"]["step"][step]["sections"]
+        assert {CONF_RBW_ENTRY_ID, CONF_PREFER_PASSKEY} <= sections["credentials"]["data"].keys()
+        assert CONF_USE_BROWSER_DAEMON in sections["browser_daemon"]["data"]
+        assert CONF_CREDENTIALS_FILE in sections["without_browser_daemon"]["data"]
+    assert CONF_ENABLE_PUSH in translated["options"]["step"]["init"]["data"]
+    assert translated["config"]["error"]["rbw_incomplete"]
+    assert translated["config"]["error"]["rbw_needs_browser_daemon"]
     assert translated["config"]["abort"]["reconfigure_successful"]
 
 
@@ -879,29 +864,34 @@ async def test_connection_form_selects_integration_with_override_behind_checkbox
         else []
     )
     result = await flow.async_step_user()
-    markers = {key.schema: key for key in result["data_schema"].schema}
+    markers = _markers(result)
     browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
     override = {"field": "browser_daemon_override", "value": True}
-    picker = result["data_schema"].schema[markers["browser_daemon_entry_id"]]
+    picker = next(
+        value
+        for _key, sec in _sections(result)
+        for key, value in sec.schema.schema.items()
+        if str(key) == "browser_daemon_entry_id"
+    )
     assert picker.config["integration"] == "browser_daemon"
     assert markers["browser_daemon_entry_id"].default() == "bd1"
     assert markers["browser_daemon_override"].default() is False
     assert markers["browser_daemon_url"].visible == [browser, override]
     assert markers["browser_daemon_secret"].visible == [browser, override]
     # The cluster secret is never prefilled.
-    assert "browser_daemon_secret" not in result["data_schema"]({})
+    assert "browser_daemon_secret" not in _defaults(result)
 
 
 @pytest.mark.asyncio
-async def test_connection_form_without_integration_only_offers_override():
+async def test_connection_form_without_integration_greys_the_picker():
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
     flow.hass.config.components = set()
     flow.hass.data = {}
     flow.hass.config_entries.async_entries.return_value = []
     result = await flow.async_step_user()
-    markers = {key.schema: key for key in result["data_schema"].schema}
-    assert "browser_daemon_entry_id" not in markers
+    markers = _markers(result)
+    assert "browser_daemon_entry_id" in markers
     assert markers["browser_daemon_override"].default() is True
 
 

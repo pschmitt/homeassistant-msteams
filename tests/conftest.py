@@ -118,6 +118,15 @@ if "homeassistant" not in sys.modules:
             super().__init__(*args, **kwargs)
             self.visible = visible
 
+    class section:
+        def __init__(self, schema, options=None):
+            self.schema = schema
+            self.options = options or {}
+
+        def __call__(self, value):
+            return self.schema(value)
+
+    data_entry_flow.section = section
     data_entry_flow.Optional = Optional
     data_entry_flow.AbortFlow = AbortFlow
     data_entry_flow.FlowResult = dict
@@ -252,6 +261,7 @@ if "homeassistant" not in sys.modules:
         def __call__(self, value):
             return value
 
+    selector.BooleanSelector = TextSelector
     selector.ConfigEntrySelector = TextSelector
     selector.SelectOptionDict = dict
     selector.SelectSelector = TextSelector

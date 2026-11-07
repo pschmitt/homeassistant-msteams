@@ -3,58 +3,116 @@
     "step": {
       "user": {
         "title": "Microsoft Teams",
-        "description": "Automatisch über Browser Daemon authentifizieren oder eine Anmeldedatei bzw. ein OAuth-Refresh-Token angeben.",
+        "description": "Verbinde dein Teams-Konto.",
         "data": {
-          "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_entry_id": "Browser-Daemon-Integration",
-          "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
-          "browser_daemon_url": "browser-daemon-URL",
-          "browser_daemon_secret": "Cluster-Geheimnis",
-          "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
-          "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
-          "rbw_entry_id": "rbw-Integration",
-          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
-          "credentials_file": "Pfad zur Anmeldedatei (z.B. /config/teams_credentials.json)",
-          "refresh_token": "OAuth-Refresh-Token",
-          "tenant_id": "Mandanten-ID (Tenant ID)",
           "user_display_name": "Anzeigename",
           "default_conversation_id": "Standard-Konversations-ID (optional)"
-        }
-      },
-      "reauth_confirm": {
-        "title": "Microsoft Teams erneut authentifizieren",
-        "description": "Authentifizierungs-Token über Browser Daemon neu laden oder aktualisierte Anmeldedaten angeben.",
-        "data": {
-          "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_entry_id": "Browser-Daemon-Integration",
-          "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
-          "browser_daemon_url": "browser-daemon-URL",
-          "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
-          "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
-          "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
-          "rbw_entry_id": "rbw-Integration",
-          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
-          "credentials_file": "Pfad zur Anmeldedatei",
-          "refresh_token": "OAuth-Refresh-Token",
-          "tenant_id": "Mandanten-ID (Tenant ID)"
+        },
+        "sections": {
+          "browser_daemon": {
+            "name": "Browser Daemon",
+            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder die eigene URL.",
+            "data": {
+              "use_browser_daemon": "Über Browser Daemon anmelden",
+              "browser_daemon_entry_id": "Browser-Daemon-Integration",
+              "browser_daemon_override": "Eigene URL und Cluster-Secret verwenden",
+              "browser_daemon_url": "browser-daemon-URL",
+              "browser_daemon_secret": "Cluster-Secret",
+              "browser_daemon_profile": "Browser-Profil (leer: temporär)",
+              "browser_daemon_node_group": "Node-Gruppe (optional)"
+            }
+          },
+          "credentials": {
+            "name": "Anmeldedaten",
+            "description": "rbw trägt die Microsoft-Anmeldung im Browser ein und braucht daher Browser Daemon. Braucht die rbw-Integration.",
+            "data": {
+              "rbw_entry_id": "rbw-Integration",
+              "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
+            }
+          },
+          "without_browser_daemon": {
+            "name": "Ohne Browser Daemon",
+            "description": "Eine Anmeldedatei oder ein Refresh-Token importieren, statt sich im Browser anzumelden.",
+            "data": {
+              "credentials_file": "Pfad der Anmeldedatei (z. B. /config/teams_credentials.json)",
+              "refresh_token": "OAuth-Refresh-Token",
+              "tenant_id": "Mandanten-ID"
+            }
+          }
         }
       },
       "reconfigure": {
-        "title": "Microsoft Teams neu konfigurieren",
-        "description": "Aktualisiere die Authentifizierungseinstellungen dieses Teams-Kontos. Melde dich erneut an, um die Änderungen zu speichern.",
-        "data": {
-          "use_browser_daemon": "Authentifizierung aus Browser Daemon importieren",
-          "browser_daemon_entry_id": "Browser-Daemon-Integration",
-          "browser_daemon_override": "Mit eigener URL und eigenem Cluster-Geheimnis überschreiben",
-          "browser_daemon_url": "browser-daemon-URL",
-          "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
-          "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
-          "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
-          "rbw_entry_id": "rbw-Integration",
-          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
-          "credentials_file": "Pfad zur Anmeldedatei",
-          "refresh_token": "OAuth-Refresh-Token",
-          "tenant_id": "Mandanten-ID (Tenant ID)"
+        "title": "Microsoft Teams",
+        "description": "Aktualisiere dieses Teams-Konto. Zum Speichern meldet es sich neu an.",
+        "data": {},
+        "sections": {
+          "browser_daemon": {
+            "name": "Browser Daemon",
+            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder die eigene URL.",
+            "data": {
+              "use_browser_daemon": "Über Browser Daemon anmelden",
+              "browser_daemon_entry_id": "Browser-Daemon-Integration",
+              "browser_daemon_override": "Eigene URL und Cluster-Secret verwenden",
+              "browser_daemon_url": "browser-daemon-URL",
+              "browser_daemon_secret": "Cluster-Secret",
+              "browser_daemon_profile": "Browser-Profil (leer: temporär)",
+              "browser_daemon_node_group": "Node-Gruppe (optional)"
+            }
+          },
+          "credentials": {
+            "name": "Anmeldedaten",
+            "description": "rbw trägt die Microsoft-Anmeldung im Browser ein und braucht daher Browser Daemon. Braucht die rbw-Integration.",
+            "data": {
+              "rbw_entry_id": "rbw-Integration",
+              "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
+            }
+          },
+          "without_browser_daemon": {
+            "name": "Ohne Browser Daemon",
+            "description": "Eine Anmeldedatei oder ein Refresh-Token importieren, statt sich im Browser anzumelden.",
+            "data": {
+              "credentials_file": "Pfad der Anmeldedatei (z. B. /config/teams_credentials.json)",
+              "refresh_token": "OAuth-Refresh-Token",
+              "tenant_id": "Mandanten-ID"
+            }
+          }
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut bei Microsoft Teams anmelden",
+        "description": "Deine Sitzung ist abgelaufen. Melde dich erneut an.",
+        "data": {},
+        "sections": {
+          "browser_daemon": {
+            "name": "Browser Daemon",
+            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder die eigene URL.",
+            "data": {
+              "use_browser_daemon": "Über Browser Daemon anmelden",
+              "browser_daemon_entry_id": "Browser-Daemon-Integration",
+              "browser_daemon_override": "Eigene URL und Cluster-Secret verwenden",
+              "browser_daemon_url": "browser-daemon-URL",
+              "browser_daemon_secret": "Cluster-Secret",
+              "browser_daemon_profile": "Browser-Profil (leer: temporär)",
+              "browser_daemon_node_group": "Node-Gruppe (optional)"
+            }
+          },
+          "credentials": {
+            "name": "Anmeldedaten",
+            "description": "rbw trägt die Microsoft-Anmeldung im Browser ein und braucht daher Browser Daemon. Braucht die rbw-Integration.",
+            "data": {
+              "rbw_entry_id": "rbw-Integration",
+              "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
+            }
+          },
+          "without_browser_daemon": {
+            "name": "Ohne Browser Daemon",
+            "description": "Eine Anmeldedatei oder ein Refresh-Token importieren, statt sich im Browser anzumelden.",
+            "data": {
+              "credentials_file": "Pfad der Anmeldedatei (z. B. /config/teams_credentials.json)",
+              "refresh_token": "OAuth-Refresh-Token",
+              "tenant_id": "Mandanten-ID"
+            }
+          }
         }
       },
       "rbw_item": {
@@ -66,11 +124,12 @@
       }
     },
     "error": {
-      "rbw_incomplete": "Bitte sowohl eine rbw-Integration als auch eine Eintrags-ID auswählen oder beide Felder leer lassen.",
+      "rbw_incomplete": "Bitte einen rbw-Eintrag auswählen oder die rbw-Integration leer lassen.",
       "missing_credentials": "Bitte Browser Daemon Import wählen oder eine Anmeldedatei bzw. ein Refresh-Token angeben.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
       "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen.",
-      "invalid_browser_daemon_connection": "Das Überschreiben braucht eine http(s)-URL und ein Cluster-Geheimnis."
+      "invalid_browser_daemon_connection": "Das Überschreiben braucht eine http(s)-URL und ein Cluster-Geheimnis.",
+      "rbw_needs_browser_daemon": "rbw meldet sich im Browser an: Browser Daemon einschalten oder die rbw-Integration leer lassen."
     },
     "abort": {
       "already_configured": "Dieses Microsoft Teams-Konto ist bereits konfiguriert.",
@@ -79,25 +138,14 @@
     }
   },
   "options": {
-    "error": {
-      "rbw_incomplete": "Bitte sowohl eine rbw-Integration als auch eine Eintrags-ID auswählen oder beide Felder leer lassen."
-    },
+    "error": {},
     "step": {
       "init": {
         "title": "Microsoft Teams Optionen",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
           "enable_push": "Echtzeit-Push-Updates aktivieren",
-          "rbw_entry_id": "rbw-Integration",
-          "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "default_conversation_id": "Standard-Konversations-ID für Benachrichtigungen"
-        }
-      },
-      "rbw_item": {
-        "title": "rbw-Eintrag auswählen",
-        "description": "Hier stehen die Tresor-Einträge, die diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei. Du kannst hier auch eine Eintrags-ID eingeben: rbw fragt dann unter Reparaturen nach der Freigabe.",
-        "data": {
-          "rbw_item_id": "Tresor-Eintrag"
         }
       }
     }

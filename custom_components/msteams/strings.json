@@ -3,58 +3,116 @@
     "step": {
       "user": {
         "title": "Microsoft Teams",
-        "description": "Authenticate automatically using Browser Daemon, or provide a credentials file or OAuth refresh token.",
+        "description": "Connect your Teams account.",
         "data": {
-          "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_entry_id": "Browser Daemon integration",
-          "browser_daemon_override": "Override with a custom URL and cluster secret",
-          "browser_daemon_url": "browser-daemon URL",
-          "browser_daemon_secret": "Cluster secret",
-          "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
-          "browser_daemon_node_group": "Browser Daemon node group (optional)",
-          "rbw_entry_id": "rbw integration",
-          "prefer_passkey": "Prefer rbw passkey sign-in",
-          "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
-          "refresh_token": "OAuth refresh token",
-          "tenant_id": "Tenant ID",
           "user_display_name": "User display name",
-          "default_conversation_id": "Default Conversation ID (optional)"
-        }
-      },
-      "reauth_confirm": {
-        "title": "Re-authenticate Microsoft Teams",
-        "description": "Re-acquire authentication tokens from Browser Daemon or provide updated credentials.",
-        "data": {
-          "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_entry_id": "Browser Daemon integration",
-          "browser_daemon_override": "Override with a custom URL and cluster secret",
-          "browser_daemon_url": "browser-daemon URL",
-          "browser_daemon_secret": "Cluster secret (blank: keep saved)",
-          "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
-          "browser_daemon_node_group": "Browser Daemon node group (optional)",
-          "rbw_entry_id": "rbw integration",
-          "prefer_passkey": "Prefer rbw passkey sign-in",
-          "credentials_file": "Credentials file path",
-          "refresh_token": "OAuth refresh token",
-          "tenant_id": "Tenant ID"
+          "default_conversation_id": "Default conversation ID (optional)"
+        },
+        "sections": {
+          "browser_daemon": {
+            "name": "Browser Daemon",
+            "description": "Runs the browser. Needs the Browser Daemon integration, or the override.",
+            "data": {
+              "use_browser_daemon": "Sign in through Browser Daemon",
+              "browser_daemon_entry_id": "Browser Daemon integration",
+              "browser_daemon_override": "Use a custom URL and cluster secret",
+              "browser_daemon_url": "browser-daemon URL",
+              "browser_daemon_secret": "Cluster secret",
+              "browser_daemon_profile": "Browser profile (blank: throwaway)",
+              "browser_daemon_node_group": "Node group (optional)"
+            }
+          },
+          "credentials": {
+            "name": "Credentials",
+            "description": "rbw fills in the Microsoft login during the browser sign-in, so it needs Browser Daemon. Needs the rbw integration.",
+            "data": {
+              "rbw_entry_id": "rbw integration",
+              "prefer_passkey": "Prefer rbw passkey sign-in"
+            }
+          },
+          "without_browser_daemon": {
+            "name": "Without Browser Daemon",
+            "description": "Import a credentials file or a refresh token instead of signing in through a browser.",
+            "data": {
+              "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
+              "refresh_token": "OAuth refresh token",
+              "tenant_id": "Tenant ID"
+            }
+          }
         }
       },
       "reconfigure": {
-        "title": "Reconfigure Microsoft Teams",
-        "description": "Update the authentication settings for this Teams account. Sign in again to save the changes.",
-        "data": {
-          "use_browser_daemon": "Import authentication from Browser Daemon",
-          "browser_daemon_entry_id": "Browser Daemon integration",
-          "browser_daemon_override": "Override with a custom URL and cluster secret",
-          "browser_daemon_url": "browser-daemon URL",
-          "browser_daemon_secret": "Cluster secret (blank: keep saved)",
-          "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
-          "browser_daemon_node_group": "Browser Daemon node group (optional)",
-          "rbw_entry_id": "rbw integration",
-          "prefer_passkey": "Prefer rbw passkey sign-in",
-          "credentials_file": "Credentials file path",
-          "refresh_token": "OAuth refresh token",
-          "tenant_id": "Tenant ID"
+        "title": "Microsoft Teams",
+        "description": "Update this Teams account. It signs in again to save the changes.",
+        "data": {},
+        "sections": {
+          "browser_daemon": {
+            "name": "Browser Daemon",
+            "description": "Runs the browser. Needs the Browser Daemon integration, or the override.",
+            "data": {
+              "use_browser_daemon": "Sign in through Browser Daemon",
+              "browser_daemon_entry_id": "Browser Daemon integration",
+              "browser_daemon_override": "Use a custom URL and cluster secret",
+              "browser_daemon_url": "browser-daemon URL",
+              "browser_daemon_secret": "Cluster secret",
+              "browser_daemon_profile": "Browser profile (blank: throwaway)",
+              "browser_daemon_node_group": "Node group (optional)"
+            }
+          },
+          "credentials": {
+            "name": "Credentials",
+            "description": "rbw fills in the Microsoft login during the browser sign-in, so it needs Browser Daemon. Needs the rbw integration.",
+            "data": {
+              "rbw_entry_id": "rbw integration",
+              "prefer_passkey": "Prefer rbw passkey sign-in"
+            }
+          },
+          "without_browser_daemon": {
+            "name": "Without Browser Daemon",
+            "description": "Import a credentials file or a refresh token instead of signing in through a browser.",
+            "data": {
+              "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
+              "refresh_token": "OAuth refresh token",
+              "tenant_id": "Tenant ID"
+            }
+          }
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to Microsoft Teams again",
+        "description": "Your session ended. Sign in again.",
+        "data": {},
+        "sections": {
+          "browser_daemon": {
+            "name": "Browser Daemon",
+            "description": "Runs the browser. Needs the Browser Daemon integration, or the override.",
+            "data": {
+              "use_browser_daemon": "Sign in through Browser Daemon",
+              "browser_daemon_entry_id": "Browser Daemon integration",
+              "browser_daemon_override": "Use a custom URL and cluster secret",
+              "browser_daemon_url": "browser-daemon URL",
+              "browser_daemon_secret": "Cluster secret",
+              "browser_daemon_profile": "Browser profile (blank: throwaway)",
+              "browser_daemon_node_group": "Node group (optional)"
+            }
+          },
+          "credentials": {
+            "name": "Credentials",
+            "description": "rbw fills in the Microsoft login during the browser sign-in, so it needs Browser Daemon. Needs the rbw integration.",
+            "data": {
+              "rbw_entry_id": "rbw integration",
+              "prefer_passkey": "Prefer rbw passkey sign-in"
+            }
+          },
+          "without_browser_daemon": {
+            "name": "Without Browser Daemon",
+            "description": "Import a credentials file or a refresh token instead of signing in through a browser.",
+            "data": {
+              "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
+              "refresh_token": "OAuth refresh token",
+              "tenant_id": "Tenant ID"
+            }
+          }
         }
       },
       "rbw_item": {
@@ -66,11 +124,12 @@
       }
     },
     "error": {
-      "rbw_incomplete": "Select both an rbw integration and an account item ID, or leave both empty.",
+      "rbw_incomplete": "Choose an rbw item, or leave the rbw integration empty.",
       "missing_credentials": "Please select Browser Daemon import, or provide a credentials file or refresh token.",
       "auth_failed": "Authentication failed or token invalid.",
       "cannot_connect": "Could not connect to Microsoft Teams endpoint.",
-      "invalid_browser_daemon_connection": "An override needs an http(s) URL and a cluster secret."
+      "invalid_browser_daemon_connection": "An override needs an http(s) URL and a cluster secret.",
+      "rbw_needs_browser_daemon": "rbw signs in through the browser: turn on Browser Daemon, or leave the rbw integration empty."
     },
     "abort": {
       "already_configured": "This Microsoft Teams account is already configured.",
@@ -79,25 +138,14 @@
     }
   },
   "options": {
-    "error": {
-      "rbw_incomplete": "Select both an rbw integration and an account item ID, or leave both empty."
-    },
+    "error": {},
     "step": {
       "init": {
         "title": "Microsoft Teams Options",
         "data": {
           "poll_interval": "Update interval (seconds)",
           "enable_push": "Enable real-time push updates",
-          "rbw_entry_id": "rbw integration",
-          "prefer_passkey": "Prefer rbw passkey sign-in",
           "default_conversation_id": "Default Conversation ID for notifications"
-        }
-      },
-      "rbw_item": {
-        "title": "Choose the rbw item",
-        "description": "These are the vault items rbw allows this integration to read. To offer more, allow them in the rbw integration's options. You can also enter an item ID here: rbw then asks you to allow it under Repairs.",
-        "data": {
-          "rbw_item_id": "Vault item"
         }
       }
     }
