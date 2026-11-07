@@ -20,7 +20,7 @@
               "browser_daemon_url": "browser-daemon-URL",
               "browser_daemon_secret": "Cluster-Secret",
               "browser_daemon_profile": "Browser-Profil (leer: temporär)",
-              "browser_daemon_node_group": "Node-Gruppe (optional)"
+              "browser_daemon_node_group": "Node-Label (optional)"
             }
           },
           "rbw": {
@@ -66,7 +66,7 @@
               "browser_daemon_url": "browser-daemon-URL",
               "browser_daemon_secret": "Cluster-Secret",
               "browser_daemon_profile": "Browser-Profil (leer: temporär)",
-              "browser_daemon_node_group": "Node-Gruppe (optional)"
+              "browser_daemon_node_group": "Node-Label (optional)"
             }
           },
           "rbw": {
@@ -112,7 +112,7 @@
               "browser_daemon_url": "browser-daemon-URL",
               "browser_daemon_secret": "Cluster-Secret",
               "browser_daemon_profile": "Browser-Profil (leer: temporär)",
-              "browser_daemon_node_group": "Node-Gruppe (optional)"
+              "browser_daemon_node_group": "Node-Label (optional)"
             }
           },
           "rbw": {
@@ -183,7 +183,7 @@
               "browser_daemon_url": "browser-daemon-URL",
               "browser_daemon_secret": "Cluster-Geheimnis (leer: gespeichertes behalten)",
               "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
-              "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
+              "browser_daemon_node_group": "Browser-Daemon-Node-Label (optional)",
               "credentials_file": "Pfad zur Anmeldedatei",
               "refresh_token": "OAuth-Refresh-Token",
               "tenant_id": "Mandanten-ID"

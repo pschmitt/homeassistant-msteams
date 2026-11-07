@@ -20,7 +20,7 @@
               "browser_daemon_url": "browser-daemon URL",
               "browser_daemon_secret": "Cluster secret",
               "browser_daemon_profile": "Browser profile (blank: throwaway)",
-              "browser_daemon_node_group": "Node group (optional)"
+              "browser_daemon_node_group": "Node label (optional)"
             }
           },
           "rbw": {
@@ -66,7 +66,7 @@
               "browser_daemon_url": "browser-daemon URL",
               "browser_daemon_secret": "Cluster secret",
               "browser_daemon_profile": "Browser profile (blank: throwaway)",
-              "browser_daemon_node_group": "Node group (optional)"
+              "browser_daemon_node_group": "Node label (optional)"
             }
           },
           "rbw": {
@@ -112,7 +112,7 @@
               "browser_daemon_url": "browser-daemon URL",
               "browser_daemon_secret": "Cluster secret",
               "browser_daemon_profile": "Browser profile (blank: throwaway)",
-              "browser_daemon_node_group": "Node group (optional)"
+              "browser_daemon_node_group": "Node label (optional)"
             }
           },
           "rbw": {
@@ -183,7 +183,7 @@
               "browser_daemon_url": "browser-daemon URL",
               "browser_daemon_secret": "Cluster secret (blank: keep saved)",
               "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
-              "browser_daemon_node_group": "Browser Daemon node group (optional)",
+              "browser_daemon_node_group": "Browser Daemon node label (optional)",
               "credentials_file": "Credentials file path",
               "refresh_token": "OAuth refresh token",
               "tenant_id": "Tenant ID"

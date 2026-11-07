@@ -22,6 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"
 LOGIN_GRACE_SECONDS = 10
 PROFILE_LABEL = "ha"
+PROFILE_LABEL_ICON = {"kind": "mdi", "name": "home-assistant"}
 PROFILE_ICON = Path(__file__).parent / "brand" / "icon.png"
 
 
@@ -51,6 +52,12 @@ async def _brand_profile(
             await bd_client._json(
                 "PATCH", f"/api/profiles/{name}", node=node, json={"labels": [PROFILE_LABEL]}
             )
+            # The `ha` label gets the Home Assistant icon, unless it was ever defined.
+            registry = await bd_client._json("GET", "/api/labels")
+            if PROFILE_LABEL not in (registry or {}).get("defs", {}):
+                await bd_client._json(
+                    "PUT", f"/api/labels/{PROFILE_LABEL}", json={"icon": PROFILE_LABEL_ICON}
+                )
     except (BrowserDaemonError, OSError):
         _LOGGER.debug("Could not brand the browser-daemon profile", exc_info=True)
 
