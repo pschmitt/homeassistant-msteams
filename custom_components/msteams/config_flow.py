@@ -11,7 +11,13 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
+from homeassistant.helpers.selector import (
+    ConfigEntrySelector,
+    ConfigEntrySelectorConfig,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .api import TeamsAuth, TeamsAuthError, _same_user_mri
 from .const import (
@@ -39,8 +45,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-# UI-only value: persisted disabled rbw settings remain empty strings.
-RBW_DISABLED = "disabled"
 
 
 class InvalidBrowserDaemonConnection(Exception):
@@ -74,6 +78,11 @@ def browser_connection(submitted: dict[str, Any], saved: dict[str, Any]) -> dict
     }
 
 
+def integration_picker(domain: str) -> ConfigEntrySelector:
+    """Pick one of an integration's entries, shown with its name and icon."""
+    return ConfigEntrySelector(ConfigEntrySelectorConfig(integration=domain))
+
+
 def connection_schema(
     hass: Any, defaults: dict[str, Any], *, browser_toggle: bool = True
 ) -> dict[Any, Any]:
@@ -84,24 +93,24 @@ def connection_schema(
     # The repair form has no toggle: it only shows for browser authentication.
     browser = [{"field": CONF_USE_BROWSER_DAEMON, "value": True}] if browser_toggle else []
     saved = defaults.get(CONF_BROWSER_DAEMON_ENTRY_ID)
-    daemons = {
-        entry.entry_id: entry.title
+    daemons = [
+        entry.entry_id
         for entry in hass.config_entries.async_entries("browser_daemon")
         if not entry.disabled_by
-    }
+    ]
     if saved:
-        daemons.setdefault(saved, "Unavailable integration")
+        daemons.insert(0, saved)
     override = [*browser, {"field": CONF_BROWSER_DAEMON_OVERRIDE, "value": True}]
     selection = (
         {
             data_entry_flow.Optional(
                 CONF_BROWSER_DAEMON_ENTRY_ID,
-                default=saved or next(iter(daemons)),
+                default=daemons[0],
                 visible=[
                     *browser,
                     {"field": CONF_BROWSER_DAEMON_OVERRIDE, "operator": "not_eq", "value": True},
                 ],
-            ): vol.In(daemons)
+            ): integration_picker("browser_daemon")
         }
         if daemons
         else {}
@@ -131,21 +140,24 @@ def rbw_schema(
     hass: Any, defaults: dict[str, Any], *, browser_only: bool = False
 ) -> dict[Any, Any]:
     browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
-    selected = {"field": CONF_RBW_ENTRY_ID, "operator": "not_eq", "value": RBW_DISABLED}
+    selected = {"field": CONF_RBW_ENTRY_ID, "operator": "exists"}
     enabled = browser_only or defaults.get(CONF_USE_BROWSER_DAEMON, False)
     details = ([browser, selected] if browser_only else [selected]) if enabled else False
-    entries = {RBW_DISABLED: "Disabled"}
-    entries.update(
-        {entry.entry_id: entry.title for entry in hass.config_entries.async_entries("rbw")}
+    saved_vault = defaults.get(CONF_RBW_ENTRY_ID) or None
+    # A suggested value, not a default: clearing the picker must disable rbw.
+    vault = (
+        {
+            data_entry_flow.Optional(
+                CONF_RBW_ENTRY_ID,
+                description={"suggested_value": saved_vault},
+                visible=browser if browser_only else defaults.get(CONF_USE_BROWSER_DAEMON, False),
+            ): integration_picker("rbw")
+        }
+        if saved_vault or hass.config_entries.async_entries("rbw")
+        else {}
     )
-    if saved_entry := defaults.get(CONF_RBW_ENTRY_ID):
-        entries.setdefault(saved_entry, "Unavailable integration")
     return {
-        data_entry_flow.Optional(
-            CONF_RBW_ENTRY_ID,
-            default=defaults.get(CONF_RBW_ENTRY_ID) or RBW_DISABLED,
-            visible=browser if browser_only else defaults.get(CONF_USE_BROWSER_DAEMON, False),
-        ): vol.In(entries),
+        **vault,
         data_entry_flow.Optional(
             CONF_RBW_ITEM_ID,
             default=defaults.get(CONF_RBW_ITEM_ID, ""),
@@ -159,9 +171,12 @@ def rbw_schema(
     }
 
 
-def normalize_rbw_input(data: dict[str, Any]) -> dict[str, Any]:
-    """Convert the UI disabled value and discard any stale hidden item id."""
-    if data.get(CONF_RBW_ENTRY_ID) in ("", RBW_DISABLED):
+def normalize_rbw_input(data: dict[str, Any], *, browser: bool) -> dict[str, Any]:
+    """An empty picker means no rbw, and discards any stale hidden item id.
+
+    Outside browser mode the picker is hidden, so its absence says nothing.
+    """
+    if browser and not data.get(CONF_RBW_ENTRY_ID):
         return {**data, CONF_RBW_ENTRY_ID: "", CONF_RBW_ITEM_ID: ""}
     return data
 
@@ -186,7 +201,9 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         if user_input is not None:
-            user_input = normalize_rbw_input(user_input)
+            user_input = normalize_rbw_input(
+                user_input, browser=user_input.get(CONF_USE_BROWSER_DAEMON, False)
+            )
         rbw_valid = not (user_input or {}).get(CONF_USE_BROWSER_DAEMON) or rbw_config_valid(
             user_input or {}
         )
@@ -357,7 +374,10 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
 
         if user_input is not None:
-            user_input = normalize_rbw_input(user_input)
+            user_input = normalize_rbw_input(
+                user_input,
+                browser={**effective_settings, **user_input}.get(CONF_USE_BROWSER_DAEMON, False),
+            )
         submitted_settings = {**effective_settings, **(user_input or {})}
         use_browser_daemon = submitted_settings.get(CONF_USE_BROWSER_DAEMON, False)
         rbw_valid = not use_browser_daemon or rbw_config_valid(submitted_settings)
@@ -533,7 +553,12 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
         """Manage the options."""
         errors = {}
         if user_input is not None:
-            user_input = normalize_rbw_input(user_input)
+            user_input = normalize_rbw_input(
+                user_input,
+                browser={**self.config_entry.data, **self.config_entry.options}.get(
+                    CONF_USE_BROWSER_DAEMON, False
+                ),
+            )
             if rbw_config_valid(user_input):
                 return self.async_create_entry(title="", data=user_input)
             errors["base"] = "rbw_incomplete"

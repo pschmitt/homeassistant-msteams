@@ -252,6 +252,8 @@ if "homeassistant" not in sys.modules:
         def __call__(self, value):
             return value
 
+    selector.ConfigEntrySelector = TextSelector
+    selector.ConfigEntrySelectorConfig = dict
     selector.TextSelector = TextSelector
     selector.TextSelectorConfig = dict
     selector.TextSelectorType = TextSelectorType
