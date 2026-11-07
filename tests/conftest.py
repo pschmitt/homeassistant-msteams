@@ -253,6 +253,10 @@ if "homeassistant" not in sys.modules:
             return value
 
     selector.ConfigEntrySelector = TextSelector
+    selector.SelectOptionDict = dict
+    selector.SelectSelector = TextSelector
+    selector.SelectSelectorConfig = dict
+    selector.SelectSelectorMode = types.SimpleNamespace(DROPDOWN="dropdown")
     selector.ConfigEntrySelectorConfig = dict
     selector.TextSelector = TextSelector
     selector.TextSelectorConfig = dict

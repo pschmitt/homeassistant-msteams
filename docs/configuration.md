@@ -8,8 +8,8 @@
    **Add Integration**.
 3. Enable browser-daemon authentication and enter the profile name. Home
    Assistant reuses its configured browser-daemon connection when available.
-4. Optionally select an rbw integration and provide the item ID for the
-   Microsoft account. Select both fields or leave both empty. See
+4. Optionally select an rbw integration. The next step asks for the item of the
+   Microsoft account. See
    [Authentication](authentication.md) for the fields and access scope.
 5. Submit the form. If Microsoft requests approval, MFA, consent, or another
    interactive step, complete it in the browser-daemon profile and retry.

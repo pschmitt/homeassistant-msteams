@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -50,7 +52,8 @@ async def test_browser_fields_have_native_visibility_and_named_default():
         "operator": "not_eq",
         "value": True,
     }
-    assert markers[CONF_RBW_ITEM_ID].visible == [
+    assert CONF_RBW_ITEM_ID not in markers
+    assert markers[CONF_PREFER_PASSKEY].visible == [
         {"field": CONF_USE_BROWSER_DAEMON, "value": True},
         {"field": CONF_RBW_ENTRY_ID, "operator": "exists"},
     ]
@@ -80,8 +83,7 @@ def test_rbw_picker_only_suggests_a_saved_vault(browser_only, stored, expected):
     conditions = [selected]
     if browser_only:
         conditions.insert(0, {"field": CONF_USE_BROWSER_DAEMON, "value": True})
-    for key in (CONF_RBW_ITEM_ID, CONF_PREFER_PASSKEY):
-        assert markers[key].visible == conditions
+    assert markers[CONF_PREFER_PASSKEY].visible == conditions
 
 
 def test_rbw_picker_needs_an_rbw_integration():
@@ -109,14 +111,14 @@ def test_native_rbw_visibility_serializes_and_strips_hidden_fields():
     )
     fields = vol.to_field_list(schema, custom_serializer=cv.custom_serializer)
     data_entry_flow.add_visible_conditions_to_serialized_schema(schema, fields)
-    item = next(field for field in fields if field["name"] == CONF_RBW_ITEM_ID)
-    assert item["visible"] == [
+    passkey = next(field for field in fields if field["name"] == CONF_PREFER_PASSKEY)
+    assert passkey["visible"] == [
         {"field": CONF_USE_BROWSER_DAEMON, "value": True},
         {"field": CONF_RBW_ENTRY_ID, "operator": "exists"},
     ]
     for browser, selected, expected_hidden in (
-        (True, "", {CONF_RBW_ITEM_ID, CONF_PREFER_PASSKEY}),
-        (False, "vault", {CONF_RBW_ENTRY_ID, CONF_RBW_ITEM_ID, CONF_PREFER_PASSKEY}),
+        (True, "", {CONF_PREFER_PASSKEY}),
+        (False, "vault", {CONF_RBW_ENTRY_ID, CONF_PREFER_PASSKEY}),
         (True, "vault", set()),
     ):
         visible_schema, submitted = data_entry_flow._strip_hidden_fields(
@@ -124,14 +126,12 @@ def test_native_rbw_visibility_serializes_and_strips_hidden_fields():
             {
                 CONF_USE_BROWSER_DAEMON: browser,
                 CONF_RBW_ENTRY_ID: selected,
-                CONF_RBW_ITEM_ID: "stale-item",
                 CONF_PREFER_PASSKEY: False,
             },
         )
         validated = visible_schema(submitted)
         assert not expected_hidden.intersection(validated)
         if browser and selected == "vault":
-            assert validated[CONF_RBW_ITEM_ID] == "stale-item"
             assert validated[CONF_PREFER_PASSKEY] is False
 
 
@@ -383,49 +383,92 @@ async def test_reauth_rejects_different_account():
 
 
 @pytest.mark.asyncio
-async def test_reauth_incomplete_rbw_pair_keeps_submitted_value():
-    """Show the incomplete-pair error without resetting the chosen vault."""
-    entry = MagicMock()
-    entry.data = {CONF_USER_MRI: "8:orgid:alice"}
-    entry.options = {}
-
-    flow = TeamsConfigFlow()
-    flow.reauth_entry = entry
-    flow.hass = MagicMock()
-    flow.hass.config.components = set()
-    flow.hass.data = {}
-
-    result = await flow.async_step_reauth_confirm(
-        {CONF_RBW_ENTRY_ID: "chosen_vault", CONF_USE_BROWSER_DAEMON: True}
+async def test_choosing_vault_asks_for_the_item_by_name(monkeypatch):
+    listed = AsyncMock(
+        return_value=[
+            {"id": "b-id", "name": "zeta", "fields": []},
+            {"id": "a-id", "name": "Alpha", "fields": []},
+            {"id": "locked-id", "name": None, "fields": []},
+        ]
     )
-
-    assert result["type"] == "form"
-    assert result["errors"] == {"base": "rbw_incomplete"}
-    assert _suggested_vault(result) == "chosen_vault"
-
-
-@pytest.mark.asyncio
-async def test_config_incomplete_rbw_pair_keeps_submitted_value():
-    """Initial setup also keeps the chosen vault after validation fails."""
+    monkeypatch.setitem(
+        sys.modules, "custom_components.rbw", types.SimpleNamespace(async_list_items=listed)
+    )
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
     flow.hass.config.components = set()
     flow.hass.data = {}
-
     result = await flow.async_step_user(
         {CONF_RBW_ENTRY_ID: "chosen_vault", CONF_USE_BROWSER_DAEMON: True}
     )
-
-    assert result["type"] == "form"
-    assert result["errors"] == {"base": "rbw_incomplete"}
-    assert _suggested_vault(result) == "chosen_vault"
+    assert result["step_id"] == "rbw_item"
+    listed.assert_awaited_once_with(flow.hass, "chosen_vault")
+    marker, selector = next(iter(result["data_schema"].schema.items()))
+    assert str(marker) == CONF_RBW_ITEM_ID
+    assert selector.config["custom_value"] is True
+    assert [(o["value"], o["label"]) for o in selector.config["options"]] == [
+        ("a-id", "Alpha"),
+        ("locked-id", "locked-id"),
+        ("b-id", "zeta"),
+    ]
 
 
 @pytest.mark.asyncio
-async def test_options_incomplete_rbw_pair_keeps_submitted_value():
-    """Options validation keeps the entered item id when it shows the error."""
+async def test_item_step_takes_a_typed_id_when_rbw_is_unavailable(monkeypatch):
+    from homeassistant.exceptions import HomeAssistantError
+
+    monkeypatch.setitem(
+        sys.modules,
+        "custom_components.rbw",
+        types.SimpleNamespace(async_list_items=AsyncMock(side_effect=HomeAssistantError("off"))),
+    )
+    flow = TeamsConfigFlow()
+    flow.hass = MagicMock()
+    flow.hass.config.components = set()
+    flow.hass.data = {}
+    result = await flow.async_step_user(
+        {CONF_RBW_ENTRY_ID: "chosen_vault", CONF_USE_BROWSER_DAEMON: True}
+    )
+    selector = next(iter(result["data_schema"].schema.values()))
+    assert selector.config["options"] == []
+    assert selector.config["custom_value"] is True
+
+
+@pytest.mark.parametrize(
+    ("chosen", "expected"), [("saved_vault", "saved_item"), ("other_vault", "only")]
+)
+@pytest.mark.asyncio
+async def test_options_item_step_preselects_and_returns_to_the_form(monkeypatch, chosen, expected):
+    monkeypatch.setitem(
+        sys.modules,
+        "custom_components.rbw",
+        types.SimpleNamespace(
+            async_list_items=AsyncMock(return_value=[{"id": "only", "name": "Only", "fields": []}])
+        ),
+    )
     entry = MagicMock()
-    entry.data = {}
+    entry.data = {CONF_USE_BROWSER_DAEMON: True}
+    entry.options = {CONF_RBW_ENTRY_ID: "saved_vault", CONF_RBW_ITEM_ID: "saved_item"}
+    flow = TeamsOptionsFlow()
+    flow.handler = "test_entry"
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_get_known_entry.return_value = entry
+    form = await flow.async_step_init({CONF_RBW_ENTRY_ID: chosen, CONF_ENABLE_PUSH: False})
+    assert form["step_id"] == "rbw_item"
+    assert next(iter(form["data_schema"].schema)).default() == expected
+    result = await flow.async_step_rbw_item({CONF_RBW_ITEM_ID: expected})
+    assert result["type"] == "create_entry"
+    assert result["data"] == {
+        CONF_RBW_ENTRY_ID: chosen,
+        CONF_RBW_ITEM_ID: expected,
+        CONF_ENABLE_PUSH: False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_options_blank_item_keeps_the_chosen_vault():
+    entry = MagicMock()
+    entry.data = {CONF_USE_BROWSER_DAEMON: True}
     entry.options = {}
     options_flow = TeamsOptionsFlow()
     options_flow.handler = "test_entry"
@@ -433,18 +476,17 @@ async def test_options_incomplete_rbw_pair_keeps_submitted_value():
     options_flow.hass.config_entries.async_get_known_entry.return_value = entry
 
     result = await options_flow.async_step_init(
-        {CONF_RBW_ITEM_ID: "entered_item", CONF_USE_BROWSER_DAEMON: True}
+        {CONF_RBW_ENTRY_ID: "chosen_vault", CONF_RBW_ITEM_ID: ""}
     )
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": "rbw_incomplete"}
-    defaults = result["data_schema"]({})
-    assert defaults[CONF_RBW_ITEM_ID] == "entered_item"
+    assert _suggested_vault(result) == "chosen_vault"
 
 
 @pytest.mark.asyncio
-async def test_reauth_omitted_rbw_details_keep_effective_existing_settings():
-    """With the vault still chosen, omitted details retain their effective values."""
+async def test_reauth_item_step_keeps_effective_existing_settings():
+    """With the vault still chosen, the saved item is preselected and details are kept."""
     entry = MagicMock()
     entry.entry_id = "test_entry"
     entry.data = {CONF_USER_MRI: "8:orgid:alice", CONF_RBW_ENTRY_ID: "stored_entry"}
@@ -476,9 +518,12 @@ async def test_reauth_omitted_rbw_details_keep_effective_existing_settings():
             new=AsyncMock(return_value=auth),
         ) as auth_from_browser,
     ):
-        await flow.async_step_reauth_confirm(
+        form = await flow.async_step_reauth_confirm(
             {CONF_USE_BROWSER_DAEMON: True, CONF_RBW_ENTRY_ID: "configured_entry"}
         )
+        marker = next(iter(form["data_schema"].schema))
+        assert marker.default() == "configured_item"
+        await flow.async_step_rbw_item({CONF_RBW_ITEM_ID: "configured_item"})
 
     assert auth_from_browser.await_args.kwargs["rbw_entry_id"] == "configured_entry"
     assert auth_from_browser.await_args.kwargs["rbw_item_id"] == "configured_item"
@@ -567,7 +612,6 @@ async def test_reconfigure_form_uses_effective_defaults_without_refresh_token():
     assert defaults[CONF_BROWSER_DAEMON_PROFILE] == "options_profile"
     assert defaults[CONF_TENANT_ID] == "options_tenant"
     assert _suggested_vault(result) == "rbw_entry"
-    assert defaults[CONF_RBW_ITEM_ID] == "rbw_item"
     assert defaults[CONF_PREFER_PASSKEY] is False
     assert CONF_REFRESH_TOKEN not in defaults
 
@@ -709,7 +753,6 @@ async def test_reconfigure_rejects_half_rbw_pair_from_effective_settings():
     defaults = result["data_schema"]({})
     assert result["errors"] == {"base": "rbw_incomplete"}
     assert _suggested_vault(result) == "rbw_entry"
-    assert defaults[CONF_RBW_ITEM_ID] == ""
     flow.hass.config_entries.async_update_entry.assert_not_called()
 
 
@@ -807,7 +850,9 @@ async def test_file_reconfigure_does_not_enable_installed_browser_integration():
 def test_authentication_fields_have_translated_labels(language):
     root = Path(__file__).resolve().parents[1] / "custom_components" / "msteams"
     translated = json.loads((root / "translations" / f"{language}.json").read_text())
-    fields = {CONF_RBW_ENTRY_ID, CONF_RBW_ITEM_ID, CONF_PREFER_PASSKEY}
+    fields = {CONF_RBW_ENTRY_ID, CONF_PREFER_PASSKEY}
+    for section in ("config", "options"):
+        assert CONF_RBW_ITEM_ID in translated[section]["step"]["rbw_item"]["data"]
     for step in ("user", "reauth_confirm", "reconfigure"):
         assert fields <= translated["config"]["step"][step]["data"].keys()
     assert fields | {CONF_ENABLE_PUSH} <= translated["options"]["step"]["init"]["data"].keys()

@@ -11,9 +11,14 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
     ConfigEntrySelector,
     ConfigEntrySelectorConfig,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -159,11 +164,6 @@ def rbw_schema(
     return {
         **vault,
         data_entry_flow.Optional(
-            CONF_RBW_ITEM_ID,
-            default=defaults.get(CONF_RBW_ITEM_ID, ""),
-            visible=details,
-        ): str,
-        data_entry_flow.Optional(
             CONF_PREFER_PASSKEY,
             default=defaults.get(CONF_PREFER_PASSKEY, True),
             visible=details,
@@ -181,11 +181,84 @@ def normalize_rbw_input(data: dict[str, Any], *, browser: bool) -> dict[str, Any
     return data
 
 
+async def rbw_item_options(hass: Any, entry_id: str, saved: str | None) -> list[SelectOptionDict]:
+    """The items rbw lets this integration read, by name, and the saved item.
+
+    rbw lists nothing for a new integration, and the form then takes a typed ID,
+    which rbw offers to allow through a repair.
+    """
+    try:
+        from custom_components.rbw import async_list_items
+
+        items = await async_list_items(hass, entry_id)
+    except (ImportError, HomeAssistantError):
+        items = []
+    # The name is missing while the vault is locked.
+    names = {item["id"]: item.get("name") or item["id"] for item in items}
+    if saved:
+        names.setdefault(saved, saved)
+    return [
+        SelectOptionDict(value=item_id, label=name)
+        for item_id, name in sorted(names.items(), key=lambda pair: pair[1].casefold())
+    ]
+
+
+def rbw_item_schema(options: list[SelectOptionDict], saved: str | None) -> vol.Schema:
+    """Pick an item by name, or type an ID that is not listed."""
+    default = saved or (options[0]["value"] if len(options) == 1 else None)
+    return vol.Schema(
+        {
+            (
+                vol.Required(CONF_RBW_ITEM_ID, default=default)
+                if default
+                else vol.Required(CONF_RBW_ITEM_ID)
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=options, custom_value=True, mode=SelectSelectorMode.DROPDOWN
+                )
+            )
+        }
+    )
+
+
+def needs_rbw_item(data: dict[str, Any], *, browser: bool) -> bool:
+    """An rbw integration is chosen, and the item is asked for in a second step."""
+    return browser and bool(data.get(CONF_RBW_ENTRY_ID)) and CONF_RBW_ITEM_ID not in data
+
+
+class RbwItemStep:
+    """Ask for the item after the form which chose the rbw integration."""
+
+    _rbw_input: dict[str, Any]
+    _rbw_return_step: str
+    _rbw_saved_item: str | None
+
+    async def _ask_rbw_item(
+        self, return_step: str, user_input: dict[str, Any], saved: dict[str, Any]
+    ) -> FlowResult:
+        self._rbw_input = user_input
+        self._rbw_return_step = return_step
+        same_vault = saved.get(CONF_RBW_ENTRY_ID) == user_input[CONF_RBW_ENTRY_ID]
+        self._rbw_saved_item = saved.get(CONF_RBW_ITEM_ID) if same_vault else None
+        return await self.async_step_rbw_item()
+
+    async def async_step_rbw_item(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        if user_input is not None:
+            resume = getattr(self, f"async_step_{self._rbw_return_step}")
+            return await resume({**self._rbw_input, **user_input})
+        options = await rbw_item_options(
+            self.hass, self._rbw_input[CONF_RBW_ENTRY_ID], self._rbw_saved_item
+        )
+        return self.async_show_form(
+            step_id="rbw_item", data_schema=rbw_item_schema(options, self._rbw_saved_item)
+        )
+
+
 def rbw_config_valid(data: dict[str, Any]) -> bool:
     return bool(data.get(CONF_RBW_ENTRY_ID)) == bool(data.get(CONF_RBW_ITEM_ID))
 
 
-class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class TeamsConfigFlow(RbwItemStep, config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Microsoft Teams."""
 
     VERSION = 1
@@ -204,6 +277,8 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             user_input = normalize_rbw_input(
                 user_input, browser=user_input.get(CONF_USE_BROWSER_DAEMON, False)
             )
+            if needs_rbw_item(user_input, browser=user_input.get(CONF_USE_BROWSER_DAEMON, False)):
+                return await self._ask_rbw_item("user", user_input, {})
         rbw_valid = not (user_input or {}).get(CONF_USE_BROWSER_DAEMON) or rbw_config_valid(
             user_input or {}
         )
@@ -374,10 +449,10 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
 
         if user_input is not None:
-            user_input = normalize_rbw_input(
-                user_input,
-                browser={**effective_settings, **user_input}.get(CONF_USE_BROWSER_DAEMON, False),
-            )
+            browser = {**effective_settings, **user_input}.get(CONF_USE_BROWSER_DAEMON, False)
+            user_input = normalize_rbw_input(user_input, browser=browser)
+            if needs_rbw_item(user_input, browser=browser):
+                return await self._ask_rbw_item(step_id, user_input, effective_settings)
         submitted_settings = {**effective_settings, **(user_input or {})}
         use_browser_daemon = submitted_settings.get(CONF_USE_BROWSER_DAEMON, False)
         rbw_valid = not use_browser_daemon or rbw_config_valid(submitted_settings)
@@ -546,19 +621,18 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return TeamsOptionsFlow()
 
 
-class TeamsOptionsFlow(config_entries.OptionsFlow):
+class TeamsOptionsFlow(RbwItemStep, config_entries.OptionsFlow):
     """Handle options for Microsoft Teams."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage the options."""
         errors = {}
         if user_input is not None:
-            user_input = normalize_rbw_input(
-                user_input,
-                browser={**self.config_entry.data, **self.config_entry.options}.get(
-                    CONF_USE_BROWSER_DAEMON, False
-                ),
-            )
+            saved = {**self.config_entry.data, **self.config_entry.options}
+            browser = saved.get(CONF_USE_BROWSER_DAEMON, False)
+            user_input = normalize_rbw_input(user_input, browser=browser)
+            if needs_rbw_item(user_input, browser=browser):
+                return await self._ask_rbw_item("init", user_input, saved)
             if rbw_config_valid(user_input):
                 return self.async_create_entry(title="", data=user_input)
             errors["base"] = "rbw_incomplete"

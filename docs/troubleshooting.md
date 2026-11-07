@@ -20,8 +20,8 @@ timeout.
 
 ## rbw sign-in does not proceed
 
-- Check that both the rbw integration and the Microsoft account item ID are
-  selected.
+- Check that the rbw integration and the Microsoft account item are selected, and
+  that the rbw integration's options allow Teams to read that item.
 - Confirm the selected rbw client can read the item's `username`, `password`,
   and current `totp` fields. Keep access limited to those fields.
 - Confirm the browser-daemon profile is not already attached to another live

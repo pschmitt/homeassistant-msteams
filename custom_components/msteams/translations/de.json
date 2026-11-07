@@ -13,7 +13,6 @@
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
-          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "credentials_file": "Pfad zur Anmeldedatei (z.B. /config/teams_credentials.json)",
           "refresh_token": "OAuth-Refresh-Token",
@@ -34,7 +33,6 @@
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
-          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "credentials_file": "Pfad zur Anmeldedatei",
           "refresh_token": "OAuth-Refresh-Token",
@@ -53,11 +51,17 @@
           "browser_daemon_profile": "Browser-Profil (Standard: ha-msteams; leer: temporär)",
           "browser_daemon_node_group": "Browser-Daemon-Knotengruppe (optional)",
           "rbw_entry_id": "rbw-Integration",
-          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "credentials_file": "Pfad zur Anmeldedatei",
           "refresh_token": "OAuth-Refresh-Token",
           "tenant_id": "Mandanten-ID (Tenant ID)"
+        }
+      },
+      "rbw_item": {
+        "title": "rbw-Eintrag auswählen",
+        "description": "Hier stehen die Tresor-Einträge, die diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei. Du kannst hier auch eine Eintrags-ID eingeben: rbw fragt dann unter Reparaturen nach der Freigabe.",
+        "data": {
+          "rbw_item_id": "Tresor-Eintrag"
         }
       }
     },
@@ -85,9 +89,15 @@
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
           "enable_push": "Echtzeit-Push-Updates aktivieren",
           "rbw_entry_id": "rbw-Integration",
-          "rbw_item_id": "rbw-Eintrags-ID des Microsoft-Kontos",
           "prefer_passkey": "Anmeldung mit rbw-Passkey bevorzugen",
           "default_conversation_id": "Standard-Konversations-ID für Benachrichtigungen"
+        }
+      },
+      "rbw_item": {
+        "title": "rbw-Eintrag auswählen",
+        "description": "Hier stehen die Tresor-Einträge, die diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei. Du kannst hier auch eine Eintrags-ID eingeben: rbw fragt dann unter Reparaturen nach der Freigabe.",
+        "data": {
+          "rbw_item_id": "Tresor-Eintrag"
         }
       }
     }

@@ -13,7 +13,6 @@
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
-          "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
           "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
           "refresh_token": "OAuth refresh token",
@@ -34,7 +33,6 @@
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
-          "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
           "credentials_file": "Credentials file path",
           "refresh_token": "OAuth refresh token",
@@ -53,11 +51,17 @@
           "browser_daemon_profile": "Browser profile (default: ha-msteams; blank: throwaway)",
           "browser_daemon_node_group": "Browser Daemon node group (optional)",
           "rbw_entry_id": "rbw integration",
-          "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
           "credentials_file": "Credentials file path",
           "refresh_token": "OAuth refresh token",
           "tenant_id": "Tenant ID"
+        }
+      },
+      "rbw_item": {
+        "title": "Choose the rbw item",
+        "description": "These are the vault items rbw allows this integration to read. To offer more, allow them in the rbw integration's options. You can also enter an item ID here: rbw then asks you to allow it under Repairs.",
+        "data": {
+          "rbw_item_id": "Vault item"
         }
       }
     },
@@ -85,9 +89,15 @@
           "poll_interval": "Update interval (seconds)",
           "enable_push": "Enable real-time push updates",
           "rbw_entry_id": "rbw integration",
-          "rbw_item_id": "rbw Microsoft account item ID",
           "prefer_passkey": "Prefer rbw passkey sign-in",
           "default_conversation_id": "Default Conversation ID for notifications"
+        }
+      },
+      "rbw_item": {
+        "title": "Choose the rbw item",
+        "description": "These are the vault items rbw allows this integration to read. To offer more, allow them in the rbw integration's options. You can also enter an item ID here: rbw then asks you to allow it under Repairs.",
+        "data": {
+          "rbw_item_id": "Vault item"
         }
       }
     }

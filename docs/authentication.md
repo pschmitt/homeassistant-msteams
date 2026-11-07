@@ -44,7 +44,9 @@ requires a browser-daemon version serving `POST /api/mesh/placement`.
 
 ## rbw credentials and passkeys
 
-Select both an rbw integration and its Microsoft account item ID. At login time,
+Select an rbw integration, then choose the Microsoft account item in the next
+step. It lists the items rbw allows Teams to read, by name; you can also enter
+an item ID, and rbw asks you to allow it under Repairs. At login time,
 the integration calls Home Assistant rbw's `async_get_field` for the current
 `username`, `password`, and `totp` fields as needed. It does not pre-copy a
 password or TOTP seed into the Teams entry. A current TOTP code is read from
