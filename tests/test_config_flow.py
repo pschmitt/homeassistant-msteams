@@ -170,6 +170,24 @@ async def test_vault_without_item_asks_for_it():
 
 
 @pytest.mark.asyncio
+async def test_blank_item_does_not_fall_back_to_the_saved_one():
+    entry = MagicMock()
+    entry.entry_id = "existing_entry"
+    entry.data = {CONF_USER_MRI: "8:orgid:alice", CONF_USE_BROWSER_DAEMON: True}
+    entry.options = {CONF_RBW_ENTRY_ID: "vault", CONF_RBW_ITEM_ID: "saved_item"}
+    flow = reconfigure_setup(entry)
+    with patch(
+        "custom_components.msteams.config_flow.TeamsAuth.async_from_browser_daemon",
+        new=AsyncMock(),
+    ) as sign_in:
+        result = await flow.async_step_reconfigure(
+            {CONF_USE_BROWSER_DAEMON: True, "credentials": {CONF_RBW_ENTRY_ID: "vault"}}
+        )
+    assert result["errors"] == {"base": "rbw_incomplete"}
+    sign_in.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_rbw_without_browser_daemon_explains_the_problem():
     flow = TeamsConfigFlow()
     flow.hass = MagicMock()
