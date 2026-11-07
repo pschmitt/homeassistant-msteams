@@ -21,30 +21,38 @@ from browser_daemon_client import (
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"
 LOGIN_GRACE_SECONDS = 10
+PROFILE_LABEL = "ha"
 PROFILE_ICON = Path(__file__).parent / "brand" / "icon.png"
 
 
-async def _ensure_profile_icon(
+async def _brand_profile(
     bd_client: BrowserDaemon, profile: str, node: str | None, current: dict[str, Any]
 ) -> None:
-    """Give a profile without a picture the Teams logo. Never raises."""
+    """Give a profile without a picture the Teams logo, and one without labels the
+    `ha` label (what the user set is kept). Never raises."""
     if not profile:
         return
     try:
         if not current:
             current = await bd_client.find_profile(profile) or {}
             node = current.get("node_name") or node
-        if not current or current.get("icon_rev"):
+        if not current:
             return
-        data = await asyncio.to_thread(PROFILE_ICON.read_bytes)
-        await bd_client._request(
-            "PUT",
-            f"/api/profiles/{quote(profile, safe='')}/icon",
-            node=node,
-            data=aiohttp.BytesPayload(data, content_type="image/png"),
-        )
+        name = quote(profile, safe="")
+        if not current.get("icon_rev"):
+            data = await asyncio.to_thread(PROFILE_ICON.read_bytes)
+            await bd_client._request(
+                "PUT",
+                f"/api/profiles/{name}/icon",
+                node=node,
+                data=aiohttp.BytesPayload(data, content_type="image/png"),
+            )
+        if not current.get("labels"):
+            await bd_client._json(
+                "PATCH", f"/api/profiles/{name}", node=node, json={"labels": [PROFILE_LABEL]}
+            )
     except (BrowserDaemonError, OSError):
-        _LOGGER.debug("Could not set the browser-daemon profile picture", exc_info=True)
+        _LOGGER.debug("Could not brand the browser-daemon profile", exc_info=True)
 
 
 class BrowserAuthError(Exception):
@@ -115,9 +123,7 @@ async def acquire_browser_auth(
             session_id = created_session_id
         except BrowserDaemonError:
             raise BrowserAuthError("Failed to start browser-daemon session") from None
-    await _ensure_profile_icon(
-        bd_client, profile, node_name, prof if not created_session_id else {}
-    )
+    await _brand_profile(bd_client, profile, node_name, prof if not created_session_id else {})
     tab_id: str | None = None
     opened_new_tab = False
     retain_for_login = False
