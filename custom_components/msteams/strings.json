@@ -7,7 +7,8 @@
         "data": {
           "user_display_name": "User display name",
           "default_conversation_id": "Default conversation ID (optional)",
-          "use_browser_daemon": "Sign in through Browser Daemon"
+          "credentials_provider": "Credentials",
+          "sign_in_method": "How to sign in"
         },
         "sections": {
           "browser_daemon": {
@@ -22,34 +23,38 @@
               "browser_daemon_node_group": "Node group (optional)"
             }
           },
-          "credentials": {
-            "name": "Credentials",
+          "rbw": {
+            "name": "rbw",
             "data": {
               "rbw_entry_id": "rbw integration",
               "rbw_item_id": "Vault item",
               "prefer_passkey": "Prefer rbw passkey sign-in"
             },
             "data_description": {
-              "rbw_entry_id": "Fills in the Microsoft login during the browser sign-in. Leave empty to sign in by hand. Using rbw needs the rbw integration.",
+              "rbw_entry_id": "Needs the rbw integration.",
               "rbw_item_id": "Lists what rbw allows this integration to read. To offer more, allow them in the rbw integration's options, or type an item ID and approve it under Repairs."
             }
           },
-          "without_browser_daemon": {
-            "name": "Without Browser Daemon",
-            "description": "Import a credentials file or a refresh token instead of signing in through a browser.",
+          "import": {
+            "name": "Credentials file or token",
+            "description": "Provide either one.",
             "data": {
               "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
               "refresh_token": "OAuth refresh token",
               "tenant_id": "Tenant ID"
             }
           }
+        },
+        "data_description": {
+          "credentials_provider": "rbw fills in the Microsoft login. By hand, you reuse a signed-in browser profile or sign in yourself when asked."
         }
       },
       "reconfigure": {
         "title": "Microsoft Teams",
         "description": "Update this Teams account. It signs in again to save the changes.",
         "data": {
-          "use_browser_daemon": "Sign in through Browser Daemon"
+          "credentials_provider": "Credentials",
+          "sign_in_method": "How to sign in"
         },
         "sections": {
           "browser_daemon": {
@@ -64,34 +69,38 @@
               "browser_daemon_node_group": "Node group (optional)"
             }
           },
-          "credentials": {
-            "name": "Credentials",
+          "rbw": {
+            "name": "rbw",
             "data": {
               "rbw_entry_id": "rbw integration",
               "rbw_item_id": "Vault item",
               "prefer_passkey": "Prefer rbw passkey sign-in"
             },
             "data_description": {
-              "rbw_entry_id": "Fills in the Microsoft login during the browser sign-in. Leave empty to sign in by hand. Using rbw needs the rbw integration.",
+              "rbw_entry_id": "Needs the rbw integration.",
               "rbw_item_id": "Lists what rbw allows this integration to read. To offer more, allow them in the rbw integration's options, or type an item ID and approve it under Repairs."
             }
           },
-          "without_browser_daemon": {
-            "name": "Without Browser Daemon",
-            "description": "Import a credentials file or a refresh token instead of signing in through a browser.",
+          "import": {
+            "name": "Credentials file or token",
+            "description": "Provide either one.",
             "data": {
               "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
               "refresh_token": "OAuth refresh token",
               "tenant_id": "Tenant ID"
             }
           }
+        },
+        "data_description": {
+          "credentials_provider": "rbw fills in the Microsoft login. By hand, you reuse a signed-in browser profile or sign in yourself when asked."
         }
       },
       "reauth_confirm": {
         "title": "Sign in to Microsoft Teams again",
         "description": "Your session ended. Sign in again.",
         "data": {
-          "use_browser_daemon": "Sign in through Browser Daemon"
+          "credentials_provider": "Credentials",
+          "sign_in_method": "How to sign in"
         },
         "sections": {
           "browser_daemon": {
@@ -106,32 +115,35 @@
               "browser_daemon_node_group": "Node group (optional)"
             }
           },
-          "credentials": {
-            "name": "Credentials",
+          "rbw": {
+            "name": "rbw",
             "data": {
               "rbw_entry_id": "rbw integration",
               "rbw_item_id": "Vault item",
               "prefer_passkey": "Prefer rbw passkey sign-in"
             },
             "data_description": {
-              "rbw_entry_id": "Fills in the Microsoft login during the browser sign-in. Leave empty to sign in by hand. Using rbw needs the rbw integration.",
+              "rbw_entry_id": "Needs the rbw integration.",
               "rbw_item_id": "Lists what rbw allows this integration to read. To offer more, allow them in the rbw integration's options, or type an item ID and approve it under Repairs."
             }
           },
-          "without_browser_daemon": {
-            "name": "Without Browser Daemon",
-            "description": "Import a credentials file or a refresh token instead of signing in through a browser.",
+          "import": {
+            "name": "Credentials file or token",
+            "description": "Provide either one.",
             "data": {
               "credentials_file": "Credentials file path (e.g. /config/teams_credentials.json)",
               "refresh_token": "OAuth refresh token",
               "tenant_id": "Tenant ID"
             }
           }
+        },
+        "data_description": {
+          "credentials_provider": "rbw fills in the Microsoft login. By hand, you reuse a signed-in browser profile or sign in yourself when asked."
         }
       }
     },
     "error": {
-      "rbw_incomplete": "Choose an rbw item, or leave the rbw integration empty.",
+      "rbw_incomplete": "Choose an rbw integration and a vault item, or choose manual credentials.",
       "missing_credentials": "Please select Browser Daemon import, or provide a credentials file or refresh token.",
       "auth_failed": "Authentication failed or token invalid.",
       "cannot_connect": "Could not connect to Microsoft Teams endpoint.",
@@ -288,6 +300,20 @@
           "name": "Reaction",
           "description": "The reaction to add."
         }
+      }
+    }
+  },
+  "selector": {
+    "credentials_provider": {
+      "options": {
+        "rbw": "rbw vault",
+        "manual": "Sign in by hand"
+      }
+    },
+    "sign_in_method": {
+      "options": {
+        "browser_daemon": "In a browser, through Browser Daemon",
+        "import": "Import a credentials file or refresh token"
       }
     }
   }

@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import probatio as vol
-from homeassistant import config_entries, data_entry_flow
+from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -37,20 +37,27 @@ from .const import (
     TEAMS_CLIENT_ID,
 )
 from .setup_form import (
+    CREDENTIALS_PROVIDER,
+    PROVIDER_RBW,
     SECTION_BROWSER_DAEMON,
-    SECTION_CREDENTIALS,
+    SECTION_RBW,
     browser_daemon_fields,
-    clear_rbw_when_empty,
+    choice,
+    credentials_provider_field,
     flatten_sections,
     rbw_fields,
     rbw_item_options,
+    resolve_credentials,
     section,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-SECTION_WITHOUT_BROWSER_DAEMON = "without_browser_daemon"
+SECTION_IMPORT = "import"
+SIGN_IN_METHOD = "sign_in_method"
+METHOD_BROWSER = "browser_daemon"
+METHOD_IMPORT = "import"
 
 
 class InvalidBrowserDaemonConnection(Exception):
@@ -89,34 +96,38 @@ def setup_schema(
     defaults: dict[str, Any],
     *,
     use_default: bool,
+    manual_saved: bool = False,
     items: list[Any] | None = None,
     own: dict[Any, Any] | None = None,
 ) -> vol.Schema:
-    """The Teams fields, then Browser Daemon, then credentials, or what works without a browser."""
-    browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
+    """The Teams fields, then how to sign in, which decides what else shows."""
+    browser = {"field": SIGN_IN_METHOD, "value": METHOD_BROWSER}
     return vol.Schema(
         {
             **(own or {}),
-            # Outside any section, because it decides which sections show.
-            vol.Optional(CONF_USE_BROWSER_DAEMON, default=use_default): bool,
+            vol.Optional(
+                SIGN_IN_METHOD, default=METHOD_BROWSER if use_default else METHOD_IMPORT
+            ): choice([METHOD_BROWSER, METHOD_IMPORT], SIGN_IN_METHOD),
             **section(
                 SECTION_BROWSER_DAEMON,
                 browser_daemon_fields(hass, defaults, profile=DEFAULT_PROFILE),
                 visible=browser,
             ),
-            **section(
-                SECTION_CREDENTIALS,
-                {
-                    **rbw_fields(hass, defaults, items or []),
-                    data_entry_flow.Optional(
-                        CONF_PREFER_PASSKEY,
-                        default=defaults.get(CONF_PREFER_PASSKEY, True),
-                        visible={"field": CONF_RBW_ENTRY_ID, "operator": "exists"},
-                    ): bool,
-                },
+            **credentials_provider_field(
+                hass, defaults, manual_saved=manual_saved, visible=browser
             ),
             **section(
-                SECTION_WITHOUT_BROWSER_DAEMON,
+                SECTION_RBW,
+                {
+                    **rbw_fields(hass, defaults, items or []),
+                    vol.Optional(
+                        CONF_PREFER_PASSKEY, default=defaults.get(CONF_PREFER_PASSKEY, True)
+                    ): bool,
+                },
+                visible=[browser, {"field": CREDENTIALS_PROVIDER, "value": PROVIDER_RBW}],
+            ),
+            **section(
+                SECTION_IMPORT,
                 {
                     vol.Optional(
                         CONF_CREDENTIALS_FILE, default=defaults.get(CONF_CREDENTIALS_FILE, "")
@@ -126,10 +137,19 @@ def setup_schema(
                         CONF_TENANT_ID, default=defaults.get(CONF_TENANT_ID, "common")
                     ): str,
                 },
-                visible={**browser, "operator": "not_eq"},
+                visible={"field": SIGN_IN_METHOD, "value": METHOD_IMPORT},
             ),
         }
     )
+
+
+def read_form(user_input: dict[str, Any]) -> dict[str, Any]:
+    """The submitted values without sections, and the sign-in method as it is saved."""
+    form = flatten_sections(user_input)
+    method = form.pop(SIGN_IN_METHOD, None)
+    if method:
+        form[CONF_USE_BROWSER_DAEMON] = method == METHOD_BROWSER
+    return form
 
 
 def rbw_error(data: dict[str, Any]) -> str | None:
@@ -159,9 +179,12 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         rbw_invalid = None
+        form_values: dict[str, Any] = {}
         if user_input is not None:
-            user_input = clear_rbw_when_empty(flatten_sections(user_input))
-            if rbw_invalid := rbw_error(user_input):
+            form_values = read_form(user_input)
+            user_input, rbw_invalid = resolve_credentials(form_values)
+            rbw_invalid = rbw_invalid or rbw_error(user_input)
+            if rbw_invalid:
                 errors["base"] = rbw_invalid
         if user_input is not None and not rbw_invalid:
             session = async_get_clientsession(self.hass)
@@ -248,9 +271,9 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=setup_schema(
                 self.hass,
-                user_input or {},
-                use_default=(user_input or {}).get(CONF_USE_BROWSER_DAEMON, has_browser_daemon),
-                items=await rbw_item_options(self.hass, user_input or {}),
+                form_values,
+                use_default=form_values.get(CONF_USE_BROWSER_DAEMON, has_browser_daemon),
+                items=await rbw_item_options(self.hass, form_values),
                 own={
                     vol.Optional(CONF_USER_DISPLAY_NAME): str,
                     vol.Optional(CONF_DEFAULT_CONVERSATION_ID): str,
@@ -299,20 +322,13 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             **(entry.data if entry else {}),
             **(entry.options if entry else {}),
         }
-        if step_id == "reconfigure":
-            defaults = {**effective_settings, **(user_input or {})}
-        else:
-            defaults = {
-                **(entry.data if entry else {}),
-                **(entry.options if entry else {}),
-                **(user_input or {}),
-            }
-
         rbw_invalid = None
+        form_values = read_form(user_input) if user_input is not None else {}
+        defaults = {**effective_settings, **form_values}
         if user_input is not None:
-            user_input = clear_rbw_when_empty(flatten_sections(user_input))
-            merged = {**effective_settings, **user_input}
-            if rbw_invalid := rbw_error(merged):
+            user_input, rbw_invalid = resolve_credentials(form_values)
+            rbw_invalid = rbw_invalid or rbw_error({**effective_settings, **user_input})
+            if rbw_invalid:
                 errors["base"] = rbw_invalid
         submitted_settings = {**effective_settings, **(user_input or {})}
         use_browser_daemon = submitted_settings.get(CONF_USE_BROWSER_DAEMON, False)
@@ -433,6 +449,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.hass,
                 defaults,
                 use_default=defaults.get(CONF_USE_BROWSER_DAEMON, False),
+                manual_saved=True,
                 items=await rbw_item_options(self.hass, defaults),
             ),
             errors=errors,

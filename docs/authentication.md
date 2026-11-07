@@ -13,9 +13,9 @@ does not change an existing file-based account into a browser-based account.
 With browser authentication disabled, expired credentials require importing a
 fresh file or token through **Reconfigure**; browser recovery is not attempted.
 
-With browser authentication enabled, leave both rbw fields empty to reuse an
-already signed-in browser profile and complete interactive sign-in yourself.
-Select both rbw fields only when you want automated credential recovery.
+When signing in through a browser, choose **Sign in by hand** to reuse an already
+signed-in browser profile and complete interactive sign-in yourself. Choose
+**rbw vault** when you want automated credential recovery.
 
 ## Browser-daemon profile
 
@@ -44,8 +44,8 @@ requires a browser-daemon version serving `POST /api/mesh/placement`.
 
 ## rbw credentials and passkeys
 
-Select an rbw integration and the Microsoft account item below it. The list shows
-the items rbw allows Teams to read, by name; you can also enter an item ID, and
+Choose **rbw vault**, then the rbw integration and the Microsoft account item.
+The list shows the items rbw allows Teams to read, by name; you can also enter an item ID, and
 rbw asks you to allow it under Repairs. At login time,
 the integration calls Home Assistant rbw's `async_get_field` for the current
 `username`, `password`, and `totp` fields as needed. It does not pre-copy a

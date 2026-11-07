@@ -6,10 +6,10 @@
    dedicated browser profile for the Microsoft Teams account.
 2. Add **Microsoft Teams** from **Settings** → **Devices & Services** →
    **Add Integration**.
-3. Enable browser-daemon authentication and enter the profile name. Home
+3. Under **How to sign in**, choose the browser and enter the profile name. Home
    Assistant reuses its configured browser-daemon connection when available.
-4. Optionally select an rbw integration and the item of the Microsoft account.
-   See
+4. Under **Credentials**, choose **rbw vault** and the item of the Microsoft
+   account, or **Sign in by hand**. See
    [Authentication](authentication.md) for the fields and access scope.
 5. Submit the form. If Microsoft requests approval, MFA, consent, or another
    interactive step, complete it in the browser-daemon profile and retry.

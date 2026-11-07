@@ -7,7 +7,8 @@
         "data": {
           "user_display_name": "Anzeigename",
           "default_conversation_id": "Standard-Konversations-ID (optional)",
-          "use_browser_daemon": "Über Browser Daemon anmelden"
+          "credentials_provider": "Anmeldedaten",
+          "sign_in_method": "Anmeldung"
         },
         "sections": {
           "browser_daemon": {
@@ -22,34 +23,38 @@
               "browser_daemon_node_group": "Node-Gruppe (optional)"
             }
           },
-          "credentials": {
-            "name": "Anmeldedaten",
+          "rbw": {
+            "name": "rbw",
             "data": {
               "rbw_entry_id": "rbw-Integration",
               "rbw_item_id": "Tresor-Eintrag",
               "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
             },
             "data_description": {
-              "rbw_entry_id": "Trägt die Microsoft-Anmeldung im Browser ein. Leer lassen, um dich von Hand anzumelden. rbw braucht die rbw-Integration.",
+              "rbw_entry_id": "Braucht die rbw-Integration.",
               "rbw_item_id": "Zeigt, was diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei, oder du gibst eine Eintrags-ID ein und bestätigst sie unter Reparaturen."
             }
           },
-          "without_browser_daemon": {
-            "name": "Ohne Browser Daemon",
-            "description": "Eine Anmeldedatei oder ein Refresh-Token importieren, statt sich im Browser anzumelden.",
+          "import": {
+            "name": "Anmeldedatei oder Token",
+            "description": "Eines von beiden angeben.",
             "data": {
               "credentials_file": "Pfad der Anmeldedatei (z. B. /config/teams_credentials.json)",
               "refresh_token": "OAuth-Refresh-Token",
               "tenant_id": "Mandanten-ID"
             }
           }
+        },
+        "data_description": {
+          "credentials_provider": "rbw trägt die Microsoft-Anmeldung ein. Von Hand verwendest du ein angemeldetes Browser-Profil oder meldest dich selbst an, wenn du gefragt wirst."
         }
       },
       "reconfigure": {
         "title": "Microsoft Teams",
         "description": "Aktualisiere dieses Teams-Konto. Zum Speichern meldet es sich neu an.",
         "data": {
-          "use_browser_daemon": "Über Browser Daemon anmelden"
+          "credentials_provider": "Anmeldedaten",
+          "sign_in_method": "Anmeldung"
         },
         "sections": {
           "browser_daemon": {
@@ -64,34 +69,38 @@
               "browser_daemon_node_group": "Node-Gruppe (optional)"
             }
           },
-          "credentials": {
-            "name": "Anmeldedaten",
+          "rbw": {
+            "name": "rbw",
             "data": {
               "rbw_entry_id": "rbw-Integration",
               "rbw_item_id": "Tresor-Eintrag",
               "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
             },
             "data_description": {
-              "rbw_entry_id": "Trägt die Microsoft-Anmeldung im Browser ein. Leer lassen, um dich von Hand anzumelden. rbw braucht die rbw-Integration.",
+              "rbw_entry_id": "Braucht die rbw-Integration.",
               "rbw_item_id": "Zeigt, was diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei, oder du gibst eine Eintrags-ID ein und bestätigst sie unter Reparaturen."
             }
           },
-          "without_browser_daemon": {
-            "name": "Ohne Browser Daemon",
-            "description": "Eine Anmeldedatei oder ein Refresh-Token importieren, statt sich im Browser anzumelden.",
+          "import": {
+            "name": "Anmeldedatei oder Token",
+            "description": "Eines von beiden angeben.",
             "data": {
               "credentials_file": "Pfad der Anmeldedatei (z. B. /config/teams_credentials.json)",
               "refresh_token": "OAuth-Refresh-Token",
               "tenant_id": "Mandanten-ID"
             }
           }
+        },
+        "data_description": {
+          "credentials_provider": "rbw trägt die Microsoft-Anmeldung ein. Von Hand verwendest du ein angemeldetes Browser-Profil oder meldest dich selbst an, wenn du gefragt wirst."
         }
       },
       "reauth_confirm": {
         "title": "Erneut bei Microsoft Teams anmelden",
         "description": "Deine Sitzung ist abgelaufen. Melde dich erneut an.",
         "data": {
-          "use_browser_daemon": "Über Browser Daemon anmelden"
+          "credentials_provider": "Anmeldedaten",
+          "sign_in_method": "Anmeldung"
         },
         "sections": {
           "browser_daemon": {
@@ -106,32 +115,35 @@
               "browser_daemon_node_group": "Node-Gruppe (optional)"
             }
           },
-          "credentials": {
-            "name": "Anmeldedaten",
+          "rbw": {
+            "name": "rbw",
             "data": {
               "rbw_entry_id": "rbw-Integration",
               "rbw_item_id": "Tresor-Eintrag",
               "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
             },
             "data_description": {
-              "rbw_entry_id": "Trägt die Microsoft-Anmeldung im Browser ein. Leer lassen, um dich von Hand anzumelden. rbw braucht die rbw-Integration.",
+              "rbw_entry_id": "Braucht die rbw-Integration.",
               "rbw_item_id": "Zeigt, was diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei, oder du gibst eine Eintrags-ID ein und bestätigst sie unter Reparaturen."
             }
           },
-          "without_browser_daemon": {
-            "name": "Ohne Browser Daemon",
-            "description": "Eine Anmeldedatei oder ein Refresh-Token importieren, statt sich im Browser anzumelden.",
+          "import": {
+            "name": "Anmeldedatei oder Token",
+            "description": "Eines von beiden angeben.",
             "data": {
               "credentials_file": "Pfad der Anmeldedatei (z. B. /config/teams_credentials.json)",
               "refresh_token": "OAuth-Refresh-Token",
               "tenant_id": "Mandanten-ID"
             }
           }
+        },
+        "data_description": {
+          "credentials_provider": "rbw trägt die Microsoft-Anmeldung ein. Von Hand verwendest du ein angemeldetes Browser-Profil oder meldest dich selbst an, wenn du gefragt wirst."
         }
       }
     },
     "error": {
-      "rbw_incomplete": "Bitte einen rbw-Eintrag auswählen oder die rbw-Integration leer lassen.",
+      "rbw_incomplete": "Wähle eine rbw-Integration und einen Tresor-Eintrag oder Anmeldedaten von Hand.",
       "missing_credentials": "Bitte Browser Daemon Import wählen oder eine Anmeldedatei bzw. ein Refresh-Token angeben.",
       "auth_failed": "Authentifizierung fehlgeschlagen oder Token ungültig.",
       "cannot_connect": "Verbindung zum Microsoft Teams Endpunkt fehlgeschlagen.",
@@ -291,6 +303,20 @@
           "name": "Reaktion",
           "description": "Die Emoji-Reaktion."
         }
+      }
+    }
+  },
+  "selector": {
+    "credentials_provider": {
+      "options": {
+        "rbw": "rbw-Tresor",
+        "manual": "Von Hand anmelden"
+      }
+    },
+    "sign_in_method": {
+      "options": {
+        "browser_daemon": "Im Browser, über Browser Daemon",
+        "import": "Anmeldedatei oder Refresh-Token importieren"
       }
     }
   }
