@@ -42,11 +42,8 @@ from .setup_form import (
     browser_daemon_fields,
     clear_rbw_when_empty,
     flatten_sections,
-    needs_rbw_item,
-    rbw_field,
+    rbw_fields,
     rbw_item_options,
-    rbw_item_schema,
-    saved_rbw_item,
     section,
 )
 
@@ -88,28 +85,38 @@ def browser_connection(submitted: dict[str, Any], saved: dict[str, Any]) -> dict
 
 
 def setup_schema(
-    hass: Any, defaults: dict[str, Any], *, use_default: bool, own: dict[Any, Any] | None = None
+    hass: Any,
+    defaults: dict[str, Any],
+    *,
+    use_default: bool,
+    items: list[Any] | None = None,
+    own: dict[Any, Any] | None = None,
 ) -> vol.Schema:
-    """The Teams fields, then Browser Daemon, then credentials, then what works without both."""
+    """The Teams fields, then Browser Daemon, then credentials, or what works without a browser."""
+    browser = {"field": CONF_USE_BROWSER_DAEMON, "value": True}
     return vol.Schema(
         {
             **(own or {}),
-            vol.Required(SECTION_BROWSER_DAEMON): section(
-                browser_daemon_fields(
-                    hass, defaults, profile=DEFAULT_PROFILE, use_default=use_default
-                )
+            # Outside any section, because it decides which sections show.
+            vol.Optional(CONF_USE_BROWSER_DAEMON, default=use_default): bool,
+            **section(
+                SECTION_BROWSER_DAEMON,
+                browser_daemon_fields(hass, defaults, profile=DEFAULT_PROFILE),
+                visible=browser,
             ),
-            vol.Required(SECTION_CREDENTIALS): section(
+            **section(
+                SECTION_CREDENTIALS,
                 {
-                    **rbw_field(hass, defaults),
+                    **rbw_fields(hass, defaults, items or []),
                     data_entry_flow.Optional(
                         CONF_PREFER_PASSKEY,
                         default=defaults.get(CONF_PREFER_PASSKEY, True),
                         visible={"field": CONF_RBW_ENTRY_ID, "operator": "exists"},
                     ): bool,
-                }
+                },
             ),
-            vol.Required(SECTION_WITHOUT_BROWSER_DAEMON): section(
+            **section(
+                SECTION_WITHOUT_BROWSER_DAEMON,
                 {
                     vol.Optional(
                         CONF_CREDENTIALS_FILE, default=defaults.get(CONF_CREDENTIALS_FILE, "")
@@ -119,7 +126,7 @@ def setup_schema(
                         CONF_TENANT_ID, default=defaults.get(CONF_TENANT_ID, "common")
                     ): str,
                 },
-                collapsed=True,
+                visible={**browser, "operator": "not_eq"},
             ),
         }
     )
@@ -143,9 +150,6 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self.reauth_entry: config_entries.ConfigEntry | None = None
-        self._rbw_input: dict[str, Any] = {}
-        self._rbw_return_step = "user"
-        self._rbw_saved_item: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle initial user setup."""
@@ -157,8 +161,6 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         rbw_invalid = None
         if user_input is not None:
             user_input = clear_rbw_when_empty(flatten_sections(user_input))
-            if user_input.get(CONF_USE_BROWSER_DAEMON) and needs_rbw_item(user_input):
-                return await self._ask_rbw_item("user", user_input, {})
             if rbw_invalid := rbw_error(user_input):
                 errors["base"] = rbw_invalid
         if user_input is not None and not rbw_invalid:
@@ -248,6 +250,7 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.hass,
                 user_input or {},
                 use_default=(user_input or {}).get(CONF_USE_BROWSER_DAEMON, has_browser_daemon),
+                items=await rbw_item_options(self.hass, user_input or {}),
                 own={
                     vol.Optional(CONF_USER_DISPLAY_NAME): str,
                     vol.Optional(CONF_DEFAULT_CONVERSATION_ID): str,
@@ -309,8 +312,6 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             user_input = clear_rbw_when_empty(flatten_sections(user_input))
             merged = {**effective_settings, **user_input}
-            if merged.get(CONF_USE_BROWSER_DAEMON) and needs_rbw_item(user_input):
-                return await self._ask_rbw_item(step_id, user_input, effective_settings)
             if rbw_invalid := rbw_error(merged):
                 errors["base"] = rbw_invalid
         submitted_settings = {**effective_settings, **(user_input or {})}
@@ -432,28 +433,9 @@ class TeamsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.hass,
                 defaults,
                 use_default=defaults.get(CONF_USE_BROWSER_DAEMON, False),
+                items=await rbw_item_options(self.hass, defaults),
             ),
             errors=errors,
-        )
-
-    async def _ask_rbw_item(
-        self, return_step: str, user_input: dict[str, Any], saved: dict[str, Any]
-    ) -> FlowResult:
-        self._rbw_input = user_input
-        self._rbw_return_step = return_step
-        self._rbw_saved_item = saved_rbw_item(saved, user_input[CONF_RBW_ENTRY_ID])
-        return await self.async_step_rbw_item()
-
-    async def async_step_rbw_item(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Choose the item once the rbw integration is known."""
-        if user_input is not None:
-            resume = getattr(self, f"async_step_{self._rbw_return_step}")
-            return await resume({**self._rbw_input, **user_input})
-        options = await rbw_item_options(
-            self.hass, self._rbw_input[CONF_RBW_ENTRY_ID], self._rbw_saved_item
-        )
-        return self.async_show_form(
-            step_id="rbw_item", data_schema=rbw_item_schema(options, self._rbw_saved_item)
         )
 
     @staticmethod

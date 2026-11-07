@@ -6,14 +6,14 @@
         "description": "Connect your Teams account.",
         "data": {
           "user_display_name": "User display name",
-          "default_conversation_id": "Default conversation ID (optional)"
+          "default_conversation_id": "Default conversation ID (optional)",
+          "use_browser_daemon": "Sign in through Browser Daemon"
         },
         "sections": {
           "browser_daemon": {
             "name": "Browser Daemon",
-            "description": "Runs the browser. Needs the Browser Daemon integration, or the override.",
+            "description": "Runs the browser. Needs the Browser Daemon integration, or a custom URL.",
             "data": {
-              "use_browser_daemon": "Sign in through Browser Daemon",
               "browser_daemon_entry_id": "Browser Daemon integration",
               "browser_daemon_override": "Use a custom URL and cluster secret",
               "browser_daemon_url": "browser-daemon URL",
@@ -24,10 +24,14 @@
           },
           "credentials": {
             "name": "Credentials",
-            "description": "rbw fills in the Microsoft login during the browser sign-in, so it needs Browser Daemon. Needs the rbw integration.",
             "data": {
               "rbw_entry_id": "rbw integration",
+              "rbw_item_id": "Vault item",
               "prefer_passkey": "Prefer rbw passkey sign-in"
+            },
+            "data_description": {
+              "rbw_entry_id": "Fills in the Microsoft login during the browser sign-in. Leave empty to sign in by hand. Using rbw needs the rbw integration.",
+              "rbw_item_id": "Lists what rbw allows this integration to read. To offer more, allow them in the rbw integration's options, or type an item ID and approve it under Repairs."
             }
           },
           "without_browser_daemon": {
@@ -44,13 +48,14 @@
       "reconfigure": {
         "title": "Microsoft Teams",
         "description": "Update this Teams account. It signs in again to save the changes.",
-        "data": {},
+        "data": {
+          "use_browser_daemon": "Sign in through Browser Daemon"
+        },
         "sections": {
           "browser_daemon": {
             "name": "Browser Daemon",
-            "description": "Runs the browser. Needs the Browser Daemon integration, or the override.",
+            "description": "Runs the browser. Needs the Browser Daemon integration, or a custom URL.",
             "data": {
-              "use_browser_daemon": "Sign in through Browser Daemon",
               "browser_daemon_entry_id": "Browser Daemon integration",
               "browser_daemon_override": "Use a custom URL and cluster secret",
               "browser_daemon_url": "browser-daemon URL",
@@ -61,10 +66,14 @@
           },
           "credentials": {
             "name": "Credentials",
-            "description": "rbw fills in the Microsoft login during the browser sign-in, so it needs Browser Daemon. Needs the rbw integration.",
             "data": {
               "rbw_entry_id": "rbw integration",
+              "rbw_item_id": "Vault item",
               "prefer_passkey": "Prefer rbw passkey sign-in"
+            },
+            "data_description": {
+              "rbw_entry_id": "Fills in the Microsoft login during the browser sign-in. Leave empty to sign in by hand. Using rbw needs the rbw integration.",
+              "rbw_item_id": "Lists what rbw allows this integration to read. To offer more, allow them in the rbw integration's options, or type an item ID and approve it under Repairs."
             }
           },
           "without_browser_daemon": {
@@ -81,13 +90,14 @@
       "reauth_confirm": {
         "title": "Sign in to Microsoft Teams again",
         "description": "Your session ended. Sign in again.",
-        "data": {},
+        "data": {
+          "use_browser_daemon": "Sign in through Browser Daemon"
+        },
         "sections": {
           "browser_daemon": {
             "name": "Browser Daemon",
-            "description": "Runs the browser. Needs the Browser Daemon integration, or the override.",
+            "description": "Runs the browser. Needs the Browser Daemon integration, or a custom URL.",
             "data": {
-              "use_browser_daemon": "Sign in through Browser Daemon",
               "browser_daemon_entry_id": "Browser Daemon integration",
               "browser_daemon_override": "Use a custom URL and cluster secret",
               "browser_daemon_url": "browser-daemon URL",
@@ -98,10 +108,14 @@
           },
           "credentials": {
             "name": "Credentials",
-            "description": "rbw fills in the Microsoft login during the browser sign-in, so it needs Browser Daemon. Needs the rbw integration.",
             "data": {
               "rbw_entry_id": "rbw integration",
+              "rbw_item_id": "Vault item",
               "prefer_passkey": "Prefer rbw passkey sign-in"
+            },
+            "data_description": {
+              "rbw_entry_id": "Fills in the Microsoft login during the browser sign-in. Leave empty to sign in by hand. Using rbw needs the rbw integration.",
+              "rbw_item_id": "Lists what rbw allows this integration to read. To offer more, allow them in the rbw integration's options, or type an item ID and approve it under Repairs."
             }
           },
           "without_browser_daemon": {
@@ -113,13 +127,6 @@
               "tenant_id": "Tenant ID"
             }
           }
-        }
-      },
-      "rbw_item": {
-        "title": "Choose the rbw item",
-        "description": "These are the vault items rbw allows this integration to read. To offer more, allow them in the rbw integration's options. You can also enter an item ID here: rbw then asks you to allow it under Repairs.",
-        "data": {
-          "rbw_item_id": "Vault item"
         }
       }
     },

@@ -126,6 +126,12 @@ if "homeassistant" not in sys.modules:
         def __call__(self, value):
             return self.schema(value)
 
+    class Required(probatio.Required):
+        def __init__(self, *args, visible=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.visible = visible
+
+    data_entry_flow.Required = Required
     data_entry_flow.section = section
     data_entry_flow.Optional = Optional
     data_entry_flow.AbortFlow = AbortFlow

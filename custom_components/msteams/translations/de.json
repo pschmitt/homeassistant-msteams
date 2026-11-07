@@ -6,14 +6,14 @@
         "description": "Verbinde dein Teams-Konto.",
         "data": {
           "user_display_name": "Anzeigename",
-          "default_conversation_id": "Standard-Konversations-ID (optional)"
+          "default_conversation_id": "Standard-Konversations-ID (optional)",
+          "use_browser_daemon": "Über Browser Daemon anmelden"
         },
         "sections": {
           "browser_daemon": {
             "name": "Browser Daemon",
-            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder die eigene URL.",
+            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder eine eigene URL.",
             "data": {
-              "use_browser_daemon": "Über Browser Daemon anmelden",
               "browser_daemon_entry_id": "Browser-Daemon-Integration",
               "browser_daemon_override": "Eigene URL und Cluster-Secret verwenden",
               "browser_daemon_url": "browser-daemon-URL",
@@ -24,10 +24,14 @@
           },
           "credentials": {
             "name": "Anmeldedaten",
-            "description": "rbw trägt die Microsoft-Anmeldung im Browser ein und braucht daher Browser Daemon. Braucht die rbw-Integration.",
             "data": {
               "rbw_entry_id": "rbw-Integration",
+              "rbw_item_id": "Tresor-Eintrag",
               "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
+            },
+            "data_description": {
+              "rbw_entry_id": "Trägt die Microsoft-Anmeldung im Browser ein. Leer lassen, um dich von Hand anzumelden. rbw braucht die rbw-Integration.",
+              "rbw_item_id": "Zeigt, was diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei, oder du gibst eine Eintrags-ID ein und bestätigst sie unter Reparaturen."
             }
           },
           "without_browser_daemon": {
@@ -44,13 +48,14 @@
       "reconfigure": {
         "title": "Microsoft Teams",
         "description": "Aktualisiere dieses Teams-Konto. Zum Speichern meldet es sich neu an.",
-        "data": {},
+        "data": {
+          "use_browser_daemon": "Über Browser Daemon anmelden"
+        },
         "sections": {
           "browser_daemon": {
             "name": "Browser Daemon",
-            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder die eigene URL.",
+            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder eine eigene URL.",
             "data": {
-              "use_browser_daemon": "Über Browser Daemon anmelden",
               "browser_daemon_entry_id": "Browser-Daemon-Integration",
               "browser_daemon_override": "Eigene URL und Cluster-Secret verwenden",
               "browser_daemon_url": "browser-daemon-URL",
@@ -61,10 +66,14 @@
           },
           "credentials": {
             "name": "Anmeldedaten",
-            "description": "rbw trägt die Microsoft-Anmeldung im Browser ein und braucht daher Browser Daemon. Braucht die rbw-Integration.",
             "data": {
               "rbw_entry_id": "rbw-Integration",
+              "rbw_item_id": "Tresor-Eintrag",
               "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
+            },
+            "data_description": {
+              "rbw_entry_id": "Trägt die Microsoft-Anmeldung im Browser ein. Leer lassen, um dich von Hand anzumelden. rbw braucht die rbw-Integration.",
+              "rbw_item_id": "Zeigt, was diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei, oder du gibst eine Eintrags-ID ein und bestätigst sie unter Reparaturen."
             }
           },
           "without_browser_daemon": {
@@ -81,13 +90,14 @@
       "reauth_confirm": {
         "title": "Erneut bei Microsoft Teams anmelden",
         "description": "Deine Sitzung ist abgelaufen. Melde dich erneut an.",
-        "data": {},
+        "data": {
+          "use_browser_daemon": "Über Browser Daemon anmelden"
+        },
         "sections": {
           "browser_daemon": {
             "name": "Browser Daemon",
-            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder die eigene URL.",
+            "description": "Führt den Browser aus. Braucht die Browser-Daemon-Integration oder eine eigene URL.",
             "data": {
-              "use_browser_daemon": "Über Browser Daemon anmelden",
               "browser_daemon_entry_id": "Browser-Daemon-Integration",
               "browser_daemon_override": "Eigene URL und Cluster-Secret verwenden",
               "browser_daemon_url": "browser-daemon-URL",
@@ -98,10 +108,14 @@
           },
           "credentials": {
             "name": "Anmeldedaten",
-            "description": "rbw trägt die Microsoft-Anmeldung im Browser ein und braucht daher Browser Daemon. Braucht die rbw-Integration.",
             "data": {
               "rbw_entry_id": "rbw-Integration",
+              "rbw_item_id": "Tresor-Eintrag",
               "prefer_passkey": "rbw-Passkey-Anmeldung bevorzugen"
+            },
+            "data_description": {
+              "rbw_entry_id": "Trägt die Microsoft-Anmeldung im Browser ein. Leer lassen, um dich von Hand anzumelden. rbw braucht die rbw-Integration.",
+              "rbw_item_id": "Zeigt, was diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei, oder du gibst eine Eintrags-ID ein und bestätigst sie unter Reparaturen."
             }
           },
           "without_browser_daemon": {
@@ -113,13 +127,6 @@
               "tenant_id": "Mandanten-ID"
             }
           }
-        }
-      },
-      "rbw_item": {
-        "title": "rbw-Eintrag auswählen",
-        "description": "Hier stehen die Tresor-Einträge, die diese Integration laut rbw lesen darf. Weitere gibst du in den Optionen der rbw-Integration frei. Du kannst hier auch eine Eintrags-ID eingeben: rbw fragt dann unter Reparaturen nach der Freigabe.",
-        "data": {
-          "rbw_item_id": "Tresor-Eintrag"
         }
       }
     },
