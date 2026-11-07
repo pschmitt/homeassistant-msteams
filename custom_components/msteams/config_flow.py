@@ -105,7 +105,7 @@ def setup_schema(
     return vol.Schema(
         {
             **(own or {}),
-            vol.Optional(
+            vol.Required(
                 SIGN_IN_METHOD, default=METHOD_BROWSER if use_default else METHOD_IMPORT
             ): choice([METHOD_BROWSER, METHOD_IMPORT], SIGN_IN_METHOD),
             **section(
