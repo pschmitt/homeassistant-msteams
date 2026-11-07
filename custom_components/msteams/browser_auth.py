@@ -6,9 +6,11 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
+import aiohttp
 from browser_daemon_client import (
     DEFAULT_SECRET_FILE,
     BrowserDaemon,
@@ -19,6 +21,30 @@ from browser_daemon_client import (
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_TEAMS_BASE_URL = "https://teams.microsoft.com"
 LOGIN_GRACE_SECONDS = 10
+PROFILE_ICON = Path(__file__).parent / "brand" / "icon.png"
+
+
+async def _ensure_profile_icon(
+    bd_client: BrowserDaemon, profile: str, node: str | None, current: dict[str, Any]
+) -> None:
+    """Give a profile without a picture the Teams logo. Never raises."""
+    if not profile:
+        return
+    try:
+        if not current:
+            current = await bd_client.find_profile(profile) or {}
+            node = current.get("node_name") or node
+        if not current or current.get("icon_rev"):
+            return
+        data = await asyncio.to_thread(PROFILE_ICON.read_bytes)
+        await bd_client._request(
+            "PUT",
+            f"/api/profiles/{quote(profile, safe='')}/icon",
+            node=node,
+            data=aiohttp.BytesPayload(data, content_type="image/png"),
+        )
+    except (BrowserDaemonError, OSError):
+        _LOGGER.debug("Could not set the browser-daemon profile picture", exc_info=True)
 
 
 class BrowserAuthError(Exception):
@@ -89,6 +115,9 @@ async def acquire_browser_auth(
             session_id = created_session_id
         except BrowserDaemonError:
             raise BrowserAuthError("Failed to start browser-daemon session") from None
+    await _ensure_profile_icon(
+        bd_client, profile, node_name, prof if not created_session_id else {}
+    )
     tab_id: str | None = None
     opened_new_tab = False
     retain_for_login = False
