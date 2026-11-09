@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import html
 import json
 import logging
 import os
@@ -600,6 +601,29 @@ class TeamsAuth:
         return auth
 
 
+_MESSAGE_TYPES = {"Text", "RichText", "RichText/Html"}
+_TAG_RE = re.compile(r"<[^>]+>")
+_BR_RE = re.compile(r"<(?:br|/p|/div|/li)\s*/?>", re.IGNORECASE)
+MAX_MESSAGE_CHARS = 500
+
+
+def _html_to_text(content: str | None) -> str:
+    """Flatten Teams HTML message content to plain text."""
+    if not content:
+        return ""
+    text = _BR_RE.sub("\n", content)
+    text = _TAG_RE.sub("", text)
+    text = html.unescape(text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _mri_from_url(value: str | None) -> str | None:
+    """Extract the MRI from a Teams ``from`` contacts URL."""
+    if not value:
+        return None
+    return value.rsplit("/contacts/", 1)[-1]
+
+
 class TeamsApiClient:
     """API client for Microsoft Teams services."""
 
@@ -613,6 +637,9 @@ class TeamsApiClient:
         self.region = region
         self.base_url = base_url.rstrip("/")
         self._profile_cache: dict[str, dict[str, Any]] = {}
+        self._message_cache: dict[str, dict[str, Any]] = {}
+        # Unread conversations from the latest get_active_call_and_unread() call.
+        self.unread_chats: list[dict[str, Any]] = []
 
     async def _ensure_auth(self) -> None:
         """Ensure auth is valid before making an API call."""
@@ -813,6 +840,7 @@ class TeamsApiClient:
         url = f"{self.base_url}/api/chatsvc/{self.region}/v1/users/ME/conversations?filter=isPinned+eq+true+or+isPinned+eq+false&$top=30"
         active_call: dict[str, Any] | None = None
         unread_count = 0
+        unread_chats: list[dict[str, Any]] = []
         try:
             async with self.auth.session.get(
                 url, headers=self._headers("messaging"), timeout=15
@@ -872,10 +900,46 @@ class TeamsApiClient:
                             and not _same_user_mri(last_msg.get("from"), self.auth.user_mri)
                         ):
                             unread_count += 1
+                            unread_chats.append(self._summarize_last_message(c, last_msg))
         except Exception:
             _LOGGER.debug("Failed to fetch conversations")
 
+        self.unread_chats = unread_chats
         return active_call, unread_count
+
+    def _summarize_last_message(
+        self, conv: dict[str, Any], last_msg: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Describe an unread conversation by its last message."""
+        conv_id = conv.get("id") or ""
+        tprops = conv.get("threadProperties") or {}
+        sender = last_msg.get("imdisplayname") or ""
+        if not sender:
+            sender = (
+                self._profile_cache.get(_mri_from_url(last_msg.get("from")) or "", {}).get(
+                    "displayName"
+                )
+                or "Unknown"
+            )
+        kind = "chat"
+        if conv_id.startswith("19:meeting_") or "meeting" in str(tprops.get("threadType", "")):
+            kind = "meeting"
+        elif conv_id.endswith("@thread.tacv2"):
+            kind = "channel"
+        text = _html_to_text(last_msg.get("content"))
+        if len(text) > MAX_MESSAGE_CHARS:
+            text = text[: MAX_MESSAGE_CHARS - 1] + "…"
+        return {
+            "id": str(last_msg.get("id") or ""),
+            "time": last_msg.get("originalarrivaltime") or last_msg.get("composetime"),
+            "sender": sender,
+            "text": text,
+            "channel": tprops.get("topic")
+            or (conv.get("properties") or {}).get("displayName")
+            or sender,
+            "conversation_id": conv_id,
+            "kind": kind,
+        }
 
     async def get_unread_chats_count(self) -> int:
         """Get count of chats with unread messages."""
@@ -959,3 +1023,121 @@ class TeamsApiClient:
             timeout=15,
         ) as resp:
             return resp.status in (200, 201)
+
+    async def get_recent_messages(
+        self,
+        limit: int = 100,
+        max_conversations: int = 25,
+        per_conversation: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Return the newest messages across the most recently active conversations.
+
+        Messages are cached per conversation and only refetched when the
+        conversation's last message changed, so push-triggered refreshes stay cheap.
+        """
+        await self._ensure_auth()
+        url = (
+            f"{self.base_url}/api/chatsvc/{self.region}/v1/users/ME/conversations"
+            f"?filter=isPinned+eq+true+or+isPinned+eq+false&$top={max_conversations}"
+        )
+        async with self.auth.session.get(
+            url, headers=self._headers("messaging"), timeout=20
+        ) as resp:
+            if resp.status != 200:
+                raise TeamsApiError(f"Conversations API failed (HTTP {resp.status})")
+            convs = (await resp.json()).get("conversations", [])
+
+        convs = [c for c in convs if c.get("id")]
+        convs.sort(
+            key=lambda c: (c.get("lastMessage") or {}).get("composetime") or "", reverse=True
+        )
+        convs = convs[:max_conversations]
+
+        cache = self._message_cache
+        stale = [
+            c
+            for c in convs
+            if cache.get(c["id"], {}).get("marker") != str((c.get("lastMessage") or {}).get("id"))
+        ]
+        results = await asyncio.gather(
+            *(self._fetch_conversation_messages(c, per_conversation) for c in stale),
+            return_exceptions=True,
+        )
+        for conv, result in zip(stale, results, strict=True):
+            if isinstance(result, Exception):
+                _LOGGER.debug(
+                    "Fetching messages failed for a conversation: %s", type(result).__name__
+                )
+                continue
+            cache[conv["id"]] = {
+                "marker": str((conv.get("lastMessage") or {}).get("id")),
+                "messages": result,
+            }
+
+        live_ids = {c["id"] for c in convs}
+        for stale_id in set(cache) - live_ids:
+            del cache[stale_id]
+
+        merged = [m for c in convs for m in cache.get(c["id"], {}).get("messages", [])]
+        merged.sort(key=lambda m: m.get("time") or "", reverse=True)
+        return merged[:limit]
+
+    async def _fetch_conversation_messages(
+        self, conv: dict[str, Any], page_size: int
+    ) -> list[dict[str, Any]]:
+        """Fetch and normalise the newest messages of one conversation."""
+        conv_id = conv["id"]
+        url = (
+            f"{self.base_url}/api/chatsvc/{self.region}/v1/users/ME/conversations/"
+            f"{quote(conv_id, safe='')}/messages"
+        )
+        async with self.auth.session.get(
+            url,
+            headers=self._headers("messaging"),
+            params={"startTime": "1", "pageSize": str(page_size), "view": "msnp24Equivalent"},
+            timeout=20,
+        ) as resp:
+            if resp.status != 200:
+                raise TeamsApiError(f"Messages API failed (HTTP {resp.status})")
+            raw_messages = (await resp.json()).get("messages", [])
+
+        tprops = conv.get("threadProperties") or {}
+        kind = "chat"
+        if conv_id.startswith("19:meeting_") or "meeting" in str(tprops.get("threadType", "")):
+            kind = "meeting"
+        elif conv_id.endswith("@thread.tacv2"):
+            kind = "channel"
+        topic = tprops.get("topic") or (conv.get("properties") or {}).get("displayName")
+
+        out: list[dict[str, Any]] = []
+        other_names: list[str] = []
+        for raw in raw_messages:
+            if raw.get("messagetype") not in _MESSAGE_TYPES:
+                continue
+            from_mri = _mri_from_url(raw.get("from"))
+            mine = _same_user_mri(from_mri, self.auth.user_mri)
+            sender = raw.get("imdisplayname") or ""
+            if not sender and from_mri:
+                sender = self._profile_cache.get(from_mri, {}).get("displayName") or ""
+            if sender and not mine and sender not in other_names:
+                other_names.append(sender)
+            text = _html_to_text(raw.get("content"))
+            if len(text) > MAX_MESSAGE_CHARS:
+                text = text[: MAX_MESSAGE_CHARS - 1] + "…"
+            out.append(
+                {
+                    "id": str(raw.get("id") or ""),
+                    "time": raw.get("originalarrivaltime") or raw.get("composetime"),
+                    "sender": sender or "Unknown",
+                    "from_me": mine,
+                    "text": text,
+                    "subject": (raw.get("properties") or {}).get("subject") or None,
+                    "conversation_id": conv_id,
+                    "kind": kind,
+                }
+            )
+
+        channel = topic or ", ".join(other_names[:3]) or "Chat"
+        for msg in out:
+            msg["channel"] = channel
+        return out

@@ -211,6 +211,9 @@
       },
       "unread_chats": {
         "name": "Ungelesene Chats"
+      },
+      "recent_messages": {
+        "name": "Letzte Nachrichten"
       }
     },
     "binary_sensor": {

@@ -12,6 +12,9 @@
       },
       "unread_chats": {
         "default": "mdi:message-badge"
+      },
+      "recent_messages": {
+        "default": "mdi:message-text-clock"
       }
     },
     "binary_sensor": {

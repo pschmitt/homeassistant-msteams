@@ -100,6 +100,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"Microsoft Teams ({entry.title})",
             update_interval=timedelta(seconds=poll_interval),
         )
+        self.recent_messages_enabled = False
         self._previous_meeting_id: str | None = None
         self._previous_meeting_data: dict[str, Any] | None = None
         self._sent_reminders: set[str] = set()
@@ -394,7 +395,17 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._previous_meeting_id = None
             self._previous_meeting_data = None
 
+        recent_messages: list[dict[str, Any]] | None = None
+        if self.recent_messages_enabled:
+            try:
+                recent_messages = await self.client.get_recent_messages()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Recent messages fetch failed: %s", type(err).__name__)
+                recent_messages = (self.data or {}).get("recent_messages")
+
         return {
+            "unread_messages": list(self.client.unread_chats),
+            "recent_messages": recent_messages,
             "presence": presence,
             "meetings": meetings,
             "next_meeting": next_meeting,

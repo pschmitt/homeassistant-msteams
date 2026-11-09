@@ -12,5 +12,5 @@ This Home Assistant integration uses browser-daemon session management to expose
 
 ## Validation
 
-- Run `uvx --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest` for the Python tests.
+- Run `PYTHONPATH=<browser-daemon checkout>/python uvx --with aiohttp --with voluptuous --with probatio --with pytest --with pytest-asyncio pytest` for the Python tests.
 - Run `uvx ruff check .` and `uvx ruff format --check .` for Python changes; CI also runs Hassfest.

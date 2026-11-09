@@ -137,3 +137,32 @@ async def test_notify_channel_uses_thread_subject(mock_coordinator):
         reply_to_message_id=None,
         subject="Title",
     )
+
+
+def test_unread_chats_sensor_lists_messages(mock_coordinator):
+    """The unread sensor exposes the newest unread message per chat, newest first."""
+    from custom_components.msteams.sensor import TeamsUnreadChatsSensor
+
+    mock_coordinator.data["unread_messages"] = [
+        {"time": "2026-11-09T08:00:00Z", "sender": "Bob", "text": "old", "channel": "Bob"},
+        {"time": "2026-11-09T09:00:00Z", "sender": "Eve", "text": "new", "channel": "Ops"},
+    ]
+    attrs = TeamsUnreadChatsSensor(mock_coordinator).extra_state_attributes
+    assert [m["text"] for m in attrs["messages"]] == ["new", "old"]
+
+
+def test_recent_messages_sensor(mock_coordinator):
+    """The recent messages sensor is disabled by default and counts its list."""
+    from custom_components.msteams.sensor import TeamsRecentMessagesSensor
+
+    mock_coordinator.data["recent_messages"] = [{"sender": "Bob", "text": "hi", "channel": "Ops"}]
+    sensor = TeamsRecentMessagesSensor(mock_coordinator)
+    assert sensor._attr_entity_registry_enabled_default is False
+    assert sensor.native_value == 1
+    assert sensor.extra_state_attributes["messages"][0]["channel"] == "Ops"
+
+
+def test_html_to_text():
+    from custom_components.msteams.api import _html_to_text
+
+    assert _html_to_text("<p>Hi &amp; bye</p><p>Line<br>two</p>") == "Hi & bye\nLine\ntwo"

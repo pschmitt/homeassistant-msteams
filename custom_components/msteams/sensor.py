@@ -27,6 +27,7 @@ async def async_setup_entry(
             TeamsPresenceSensor(coordinator),
             TeamsNextMeetingSensor(coordinator),
             TeamsUnreadChatsSensor(coordinator),
+            TeamsRecentMessagesSensor(coordinator),
         ]
     )
 
@@ -101,6 +102,7 @@ class TeamsUnreadChatsSensor(TeamsEntity, SensorEntity):
 
     _attr_translation_key = "unread_chats"
     _attr_icon = "mdi:message-badge"
+    _unrecorded_attributes = frozenset({"messages"})
 
     def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
         super().__init__(coordinator, "unread_chats")
@@ -110,3 +112,50 @@ class TeamsUnreadChatsSensor(TeamsEntity, SensorEntity):
         """Return unread messages count."""
         data = self.coordinator.data or {}
         return int(data.get("unread_chats") or 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the last message of each unread chat, newest first."""
+        data = self.coordinator.data or {}
+        messages = sorted(
+            data.get("unread_messages") or [], key=lambda m: m.get("time") or "", reverse=True
+        )
+        return {"messages": messages}
+
+
+class TeamsRecentMessagesSensor(TeamsEntity, SensorEntity):
+    """Disabled-by-default sensor listing the latest messages across chats and channels.
+
+    State is the number of messages; the ``messages`` attribute holds up to 100
+    entries (newest first) with sender, text and channel. The attribute is large,
+    so it is kept out of the recorder.
+    """
+
+    _attr_translation_key = "recent_messages"
+    _attr_icon = "mdi:message-text-clock"
+    _attr_entity_registry_enabled_default = False
+    _unrecorded_attributes = frozenset({"messages"})
+
+    def __init__(self, coordinator: TeamsDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "recent_messages")
+
+    async def async_added_to_hass(self) -> None:
+        """Start fetching messages once the sensor is enabled."""
+        await super().async_added_to_hass()
+        self.coordinator.recent_messages_enabled = True
+        self.hass.async_create_task(self.coordinator.async_request_refresh())
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop fetching messages when the sensor is disabled or removed."""
+        self.coordinator.recent_messages_enabled = False
+        await super().async_will_remove_from_hass()
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of cached messages."""
+        return len((self.coordinator.data or {}).get("recent_messages") or [])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the messages, newest first."""
+        return {"messages": (self.coordinator.data or {}).get("recent_messages") or []}
