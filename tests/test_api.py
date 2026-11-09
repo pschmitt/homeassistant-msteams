@@ -514,3 +514,22 @@ async def test_unavailable_integration_is_an_auth_error(monkeypatch):
 
     with pytest.raises(TeamsAuthError, match="Browser Daemon integration"):
         await TeamsAuth.async_from_browser_daemon(MagicMock(), hass=object())
+
+
+async def test_summarize_unread_uses_newest_incoming_message():
+    """Unread chats show the newest message that is not from me, with its text."""
+    from unittest.mock import MagicMock
+
+    from custom_components.msteams.api import TeamsApiClient
+
+    client = TeamsApiClient(MagicMock())
+    conv = {"id": "19:abc@thread.v2", "lastMessage": {"id": "2", "composetime": "t"}}
+    client._message_cache[conv["id"]] = {
+        "marker": "2",
+        "messages": [
+            {"id": "2", "from_me": True, "text": "mine", "sender": "Me"},
+            {"id": "1", "from_me": False, "text": "hello", "sender": "Bob"},
+        ],
+    }
+    result = await client._summarize_unread([conv])
+    assert [m["text"] for m in result] == ["hello"]

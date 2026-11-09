@@ -841,6 +841,7 @@ class TeamsApiClient:
         active_call: dict[str, Any] | None = None
         unread_count = 0
         unread_chats: list[dict[str, Any]] = []
+        unread_convs: list[dict[str, Any]] = []
         try:
             async with self.auth.session.get(
                 url, headers=self._headers("messaging"), timeout=15
@@ -897,15 +898,45 @@ class TeamsApiClient:
                         if (
                             last_msg_id
                             and last_msg_id != last_sync
-                            and not _same_user_mri(last_msg.get("from"), self.auth.user_mri)
+                            and not _same_user_mri(
+                                _mri_from_url(last_msg.get("from")), self.auth.user_mri
+                            )
                         ):
                             unread_count += 1
-                            unread_chats.append(self._summarize_last_message(c, last_msg))
+                            unread_convs.append(c)
         except Exception:
             _LOGGER.debug("Failed to fetch conversations")
 
+        try:
+            unread_chats = await self._summarize_unread(unread_convs)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Summarizing unread chats failed: %s", type(err).__name__)
         self.unread_chats = unread_chats
         return active_call, unread_count
+
+    async def _summarize_unread(
+        self, convs: list[dict[str, Any]], limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Describe the newest unread conversations by their newest incoming message.
+
+        The conversation list carries no message bodies, so the messages come from the
+        shared per-conversation cache (only changed conversations are refetched).
+        """
+        convs = sorted(
+            convs,
+            key=lambda c: (c.get("lastMessage") or {}).get("composetime") or "",
+            reverse=True,
+        )[:limit]
+        await self._refresh_message_cache(convs)
+        summaries: list[dict[str, Any]] = []
+        for conv in convs:
+            cached = self._message_cache.get(conv["id"], {}).get("messages", [])
+            incoming = [m for m in cached if not m.get("from_me")]
+            if incoming:
+                summaries.append(incoming[0])
+            else:
+                summaries.append(self._summarize_last_message(conv, conv.get("lastMessage") or {}))
+        return summaries
 
     def _summarize_last_message(
         self, conv: dict[str, Any], last_msg: dict[str, Any]
@@ -1053,6 +1084,17 @@ class TeamsApiClient:
         )
         convs = convs[:max_conversations]
 
+        await self._refresh_message_cache(convs, per_conversation)
+        cache = self._message_cache
+
+        merged = [m for c in convs for m in cache.get(c["id"], {}).get("messages", [])]
+        merged.sort(key=lambda m: m.get("time") or "", reverse=True)
+        return merged[:limit]
+
+    async def _refresh_message_cache(
+        self, convs: list[dict[str, Any]], per_conversation: int = 30
+    ) -> None:
+        """Refetch messages of conversations whose last message changed."""
         cache = self._message_cache
         stale = [
             c
@@ -1073,14 +1115,8 @@ class TeamsApiClient:
                 "marker": str((conv.get("lastMessage") or {}).get("id")),
                 "messages": result,
             }
-
-        live_ids = {c["id"] for c in convs}
-        for stale_id in set(cache) - live_ids:
-            del cache[stale_id]
-
-        merged = [m for c in convs for m in cache.get(c["id"], {}).get("messages", [])]
-        merged.sort(key=lambda m: m.get("time") or "", reverse=True)
-        return merged[:limit]
+        while len(cache) > 100:
+            del cache[next(iter(cache))]
 
     async def _fetch_conversation_messages(
         self, conv: dict[str, Any], page_size: int
@@ -1137,7 +1173,15 @@ class TeamsApiClient:
                 }
             )
 
-        channel = topic or ", ".join(other_names[:3]) or "Chat"
+        channel = topic or ", ".join(other_names[:3])
+        if not channel and kind == "chat":
+            try:
+                members = await self.get_thread_participants(conv_id)
+            except Exception:  # noqa: BLE001
+                members = []
+            others = [n for n in members if n != self.auth.user_display_name]
+            channel = ", ".join((others or members)[:3])
+        channel = channel or "Chat"
         for msg in out:
             msg["channel"] = channel
         return out
