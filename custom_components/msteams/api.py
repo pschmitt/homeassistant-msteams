@@ -1060,6 +1060,7 @@ class TeamsApiClient:
         limit: int = 100,
         max_conversations: int = 25,
         per_conversation: int = 30,
+        include_own: bool = False,
     ) -> list[dict[str, Any]]:
         """Return the newest messages across the most recently active conversations.
 
@@ -1087,7 +1088,12 @@ class TeamsApiClient:
         await self._refresh_message_cache(convs, per_conversation)
         cache = self._message_cache
 
-        merged = [m for c in convs for m in cache.get(c["id"], {}).get("messages", [])]
+        merged = [
+            m
+            for c in convs
+            for m in cache.get(c["id"], {}).get("messages", [])
+            if include_own or not m.get("from_me")
+        ]
         merged.sort(key=lambda m: m.get("time") or "", reverse=True)
         return merged[:limit]
 

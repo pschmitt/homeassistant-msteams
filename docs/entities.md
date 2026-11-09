@@ -11,7 +11,7 @@ translated entity names.
 | Presence | Current availability. Attributes include activity and custom status message. |
 | Next meeting | Upcoming meeting subject, or `No upcoming meetings`. Attributes include meeting ID, start and end times, organizer, location, description, participants, join URL, and response status when available. |
 | Unread chats | Count of chat conversations with unread messages. The `messages` attribute lists the newest unread message of each (`time`, `sender`, `channel`, `kind`, `text`, `conversation_id`), newest first. |
-| Recent messages | Disabled by default. Number of messages cached; the `messages` attribute holds up to 100 messages, newest first, from the 25 most recently active chats and channels (`time`, `sender`, `from_me`, `channel`, `kind`, `text`, `conversation_id`). Messages are only fetched while the sensor is enabled. Text is plain and cut at 500 characters. |
+| Recent messages | Disabled by default. Number of messages cached; the `messages` attribute holds up to 100 messages, newest first, from the 25 most recently active chats and channels (`time`, `sender`, `from_me`, `channel`, `kind`, `text`, `conversation_id`). Your own messages are skipped unless "Include my own messages" is set in the integration options. Messages are only fetched while the sensor is enabled. Text is plain and cut at 500 characters. |
 
 The `messages` attributes are excluded from the recorder (history), as they are large and contain message text.
 

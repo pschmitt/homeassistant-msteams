@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import TeamsApiClient, TeamsAuthError
 from .const import (
+    CONF_INCLUDE_OWN_MESSAGES,
     CONF_POLL_INTERVAL,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
@@ -398,7 +399,9 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         recent_messages: list[dict[str, Any]] | None = None
         if self.recent_messages_enabled:
             try:
-                recent_messages = await self.client.get_recent_messages()
+                recent_messages = await self.client.get_recent_messages(
+                    include_own=self.entry.options.get(CONF_INCLUDE_OWN_MESSAGES, False)
+                )
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Recent messages fetch failed: %s", type(err).__name__)
                 recent_messages = (self.data or {}).get("recent_messages")

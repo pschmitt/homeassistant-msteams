@@ -533,3 +533,29 @@ async def test_summarize_unread_uses_newest_incoming_message():
     }
     result = await client._summarize_unread([conv])
     assert [m["text"] for m in result] == ["hello"]
+
+
+async def test_get_recent_messages_skips_own_by_default():
+    """Own messages are left out unless include_own is set."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from custom_components.msteams.api import TeamsApiClient
+
+    resp = MagicMock(status=200)
+    resp.json = AsyncMock(
+        return_value={"conversations": [{"id": "19:abc@thread.v2", "lastMessage": {"id": "2"}}]}
+    )
+    session = MagicMock()
+    session.get.return_value.__aenter__ = AsyncMock(return_value=resp)
+    session.get.return_value.__aexit__ = AsyncMock(return_value=False)
+    auth = MagicMock(session=session, is_authenticated=True)
+    client = TeamsApiClient(auth)
+    client._message_cache["19:abc@thread.v2"] = {
+        "marker": "2",
+        "messages": [
+            {"id": "2", "time": "t2", "from_me": True, "text": "mine"},
+            {"id": "1", "time": "t1", "from_me": False, "text": "theirs"},
+        ],
+    }
+    assert [m["text"] for m in await client.get_recent_messages()] == ["theirs"]
+    assert len(await client.get_recent_messages(include_own=True)) == 2

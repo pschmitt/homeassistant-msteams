@@ -163,6 +163,7 @@
         "title": "Microsoft Teams Optionen",
         "data": {
           "poll_interval": "Aktualisierungsintervall (Sekunden)",
+          "include_own_messages": "Eigene Nachrichten in „Letzte Nachrichten“ anzeigen",
           "enable_push": "Echtzeit-Push-Updates aktivieren",
           "default_conversation_id": "Standard-Konversations-ID für Benachrichtigungen"
         }

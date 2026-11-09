@@ -163,6 +163,7 @@
         "title": "Microsoft Teams Options",
         "data": {
           "poll_interval": "Update interval (seconds)",
+          "include_own_messages": "Include my own messages in Recent messages",
           "enable_push": "Enable real-time push updates",
           "default_conversation_id": "Default Conversation ID for notifications"
         }

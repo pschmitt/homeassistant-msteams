@@ -34,6 +34,8 @@ Open the integration's **Options** to set:
   is 30 seconds.
 - **Enable real-time push updates**: Enabled by default. Disable it to use
   polling only.
+- **Include my own messages**: Off by default. When off, the optional Recent
+  messages sensor skips messages you sent. See [Entities](entities.md).
 - **Default conversation ID**: Conversation used by notifications and by
   `msteams.send_message` when that service omits a conversation ID.
 - **rbw integration and item**: Credential source used for browser sign-in.

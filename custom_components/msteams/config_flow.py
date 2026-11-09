@@ -23,6 +23,7 @@ from .const import (
     CONF_CREDENTIALS_FILE,
     CONF_DEFAULT_CONVERSATION_ID,
     CONF_ENABLE_PUSH,
+    CONF_INCLUDE_OWN_MESSAGES,
     CONF_POLL_INTERVAL,
     CONF_PREFER_PASSKEY,
     CONF_RBW_ENTRY_ID,
@@ -487,6 +488,10 @@ class TeamsOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_ENABLE_PUSH,
                     default=self.config_entry.options.get(CONF_ENABLE_PUSH, True),
+                ): bool,
+                vol.Optional(
+                    CONF_INCLUDE_OWN_MESSAGES,
+                    default=self.config_entry.options.get(CONF_INCLUDE_OWN_MESSAGES, False),
                 ): bool,
                 vol.Optional(
                     CONF_DEFAULT_CONVERSATION_ID,
