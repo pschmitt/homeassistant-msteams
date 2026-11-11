@@ -237,7 +237,9 @@ class TeamsTrouter:
                     "templateKey": template,
                     "platformUIVersion": _VERSION,
                 },
-                "registrationId": epid if app == "TeamsCDLWebWorker" else self._registration_id(app),
+                "registrationId": epid
+                if app == "TeamsCDLWebWorker"
+                else self._registration_id(app),
                 "nodeId": "",
                 "transports": {
                     "TROUTER": [

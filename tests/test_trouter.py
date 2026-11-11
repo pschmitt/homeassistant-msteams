@@ -87,13 +87,7 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
             + json.dumps(
                 {
                     "name": "trouter.message_loss",
-                    "args": [
-                        {
-                            "droppedIndicators": [
-                                {"tag": "TeamsCDLWebWorker", "etag": "1"}
-                            ]
-                        }
-                    ],
+                    "args": [{"droppedIndicators": [{"tag": "TeamsCDLWebWorker", "etag": "1"}]}],
                 }
             )
         )
@@ -142,5 +136,7 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
     assert [r[1] for r in registrations[:3]] == [r[1] for r in registrations[3:]]
     assert len(set(r[1] for r in registrations[:3])) == 3
     assert len(changes) == 6  # (initial + message_loss + conversation update) * 2
-    assert json.loads(acknowledgements[0].split(":", 3)[3])["name"] == "trouter.processed_message_loss"
+    assert (
+        json.loads(acknowledgements[0].split(":", 3)[3])["name"] == "trouter.processed_message_loss"
+    )
     assert json.loads(acknowledgements[1].split(":", 3)[3])["id"] == 1
