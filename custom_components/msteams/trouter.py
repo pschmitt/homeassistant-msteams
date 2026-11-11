@@ -23,6 +23,8 @@ _REGISTRAR = "https://teams.microsoft.com/registrar/prod/V2/registrations"
 _VERSION = "49/25113001312"
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0 Teams/24165.1410.2974.6689/49"
 _TC = json.dumps({"cv": "2024.23.01.2", "ua": "TeamsCDL", "hr": "", "v": _VERSION})
+_REGISTRATION_TTL = 3600
+_REGISTRATION_REFRESH_SECONDS = 15 * 60
 _RETRY_SECONDS = 60
 _RECONNECT_SECONDS = 45 * 60
 
@@ -68,6 +70,18 @@ class TeamsTrouter:
         self.on_change = on_change
         self._create_task = create_task
         self._task: asyncio.Task | None = None
+        self._fallback_seed = str(uuid.uuid4())
+
+    def _registration_id(self, app: str) -> str:
+        seed = self._fallback_seed
+        for attr in ("user_mri", "user_email"):
+            val = getattr(self.auth, attr, None)
+            if isinstance(val, str) and val:
+                seed = val
+                break
+        return str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"https://homeassistant.local/msteams/{seed}/{app}")
+        )
 
     def start(self) -> None:
         if self._task is None:
@@ -104,7 +118,7 @@ class TeamsTrouter:
         token = self.auth.spaces_token
         if not skype or not token:
             raise ValueError("Missing Teams credentials")
-        epid = str(uuid.uuid4())
+        epid = self._registration_id("TeamsCDLWebWorker")
         async with session.post(
             f"{_TROUTER}/v4/a",
             params={"epid": epid},
@@ -136,6 +150,7 @@ class TeamsTrouter:
             ws_url, headers={"X-Skypetoken": skype, "User-Agent": _USER_AGENT}, heartbeat=30
         ) as ws:
             ping_task: asyncio.Task | None = None
+            last_registered = 0.0
             try:
                 async for message in ws:
                     if message.type != aiohttp.WSMsgType.TEXT:
@@ -161,9 +176,10 @@ class TeamsTrouter:
                             )
                         )
                         await self._register(info, epid, skype, token)
+                        last_registered = time.monotonic()
                         _LOGGER.info("Teams push listener connected")
                         self.on_change()  # Reconcile changes missed while disconnected.
-                        ping_task = asyncio.create_task(self._ping(ws))
+                        ping_task = asyncio.create_task(self._ping(ws, info, epid))
                     elif frame.startswith("3"):
                         request = json.loads(frame.split(":", 3)[3])
                         if "status" in request:
@@ -180,7 +196,26 @@ class TeamsTrouter:
                     elif frame.startswith("5"):
                         obj = json.loads(frame.split(":", 3)[3] or "{}")
                         if obj.get("name") == "trouter.message_loss":
-                            await self._register(info, epid, skype, token)
+                            args = obj.get("args") or []
+                            dropped = (
+                                args[0].get("droppedIndicators")
+                                if args and isinstance(args[0], dict)
+                                else None
+                            )
+                            if dropped:
+                                await ws.send_str(
+                                    "5:::"
+                                    + json.dumps(
+                                        {
+                                            "name": "trouter.processed_message_loss",
+                                            "args": [{"droppedIndicators": dropped}],
+                                        }
+                                    )
+                                )
+                            now = time.monotonic()
+                            if now - last_registered >= 30:
+                                await self._register(info, epid, skype, token)
+                                last_registered = now
                             self.on_change()
             finally:
                 if ping_task:
@@ -202,10 +237,16 @@ class TeamsTrouter:
                     "templateKey": template,
                     "platformUIVersion": _VERSION,
                 },
-                "registrationId": epid if app == "TeamsCDLWebWorker" else str(uuid.uuid4()),
+                "registrationId": epid if app == "TeamsCDLWebWorker" else self._registration_id(app),
                 "nodeId": "",
                 "transports": {
-                    "TROUTER": [{"context": "", "path": info["surl"] + suffix, "ttl": 86400}]
+                    "TROUTER": [
+                        {
+                            "context": "",
+                            "path": info["surl"] + suffix,
+                            "ttl": _REGISTRATION_TTL,
+                        }
+                    ]
                 },
             }
             async with self.auth.session.post(
@@ -216,9 +257,18 @@ class TeamsTrouter:
             ) as response:
                 response.raise_for_status()
 
-    async def _ping(self, ws: aiohttp.ClientWebSocketResponse) -> None:
+    async def _ping(
+        self, ws: aiohttp.ClientWebSocketResponse, info: dict[str, Any], epid: str
+    ) -> None:
         sequence = 1
+        last_refresh = time.monotonic()
         while True:
             await asyncio.sleep(30)
             await ws.send_str(f'5:{sequence}+::{{"name":"ping"}}')
             sequence += 1
+            if time.monotonic() - last_refresh >= _REGISTRATION_REFRESH_SECONDS:
+                skype = self.auth.skype_token
+                token = self.auth.spaces_token
+                if skype and token:
+                    await self._register(info, epid, skype, token)
+                    last_refresh = time.monotonic()

@@ -67,7 +67,14 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
         return web.Response(text="test-session:180:180:websocket")
 
     async def register(request):
-        registrations.append(await request.json())
+        payload = await request.json()
+        registrations.append(
+            (
+                payload["clientDescription"]["appId"],
+                payload["registrationId"],
+                payload["transports"]["TROUTER"][0]["ttl"],
+            )
+        )
         return web.Response(status=200)
 
     async def websocket(request):
@@ -75,6 +82,22 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
         await ws.prepare(request)
         await ws.send_str("1::")
         await ws.receive()  # user.authenticate
+        await ws.send_str(
+            "5:::"
+            + json.dumps(
+                {
+                    "name": "trouter.message_loss",
+                    "args": [
+                        {
+                            "droppedIndicators": [
+                                {"tag": "TeamsCDLWebWorker", "etag": "1"}
+                            ]
+                        }
+                    ],
+                }
+            )
+        )
+        acknowledgements.append((await ws.receive()).data)  # processed_message_loss
         body = json.dumps({"type": "EventMessage", "resourceType": "ConversationUpdate"})
         await ws.send_str("3:::" + json.dumps({"id": 1, "url": "/messaging", "body": body}))
         acknowledgements.append((await ws.receive()).data)
@@ -96,15 +119,28 @@ async def test_connect_registers_and_refreshes_on_events(monkeypatch):
     monkeypatch.setattr(trouter, "_REGISTRAR", base_url + "/registrations")
     try:
         async with ClientSession() as session:
-            auth = MagicMock(session=session, skype_token="test", spaces_token="test")
-            await TeamsTrouter(auth, lambda: changes.append(True))._connect()
+            auth = MagicMock(
+                session=session,
+                skype_token="test",
+                spaces_token="test",
+                user_mri="8:orgid:00000000-0000-0000-0000-000000000001",
+            )
+            listener = TeamsTrouter(auth, lambda: changes.append(True))
+            await listener._connect()
+            await listener._connect()
     finally:
         await runner.cleanup()
-    assert [r["clientDescription"]["appId"] for r in registrations] == [
+    assert [r[0] for r in registrations[:3]] == [
         "NextGenCalling",
         "SkypeSpacesWeb",
         "TeamsCDLWebWorker",
     ]
-    assert registrations[-1]["registrationId"] == endpoint_ids[0]
-    assert len(changes) == 2  # Initial reconciliation and conversation update.
-    assert json.loads(acknowledgements[0].split(":", 3)[3])["id"] == 1
+    assert registrations[2][1] == endpoint_ids[0]
+    assert all(r[2] == 3600 for r in registrations)
+    # Reconnecting reuses the exact same deterministic registrationIds instead of leaking new ones.
+    assert len(registrations) == 6
+    assert [r[1] for r in registrations[:3]] == [r[1] for r in registrations[3:]]
+    assert len(set(r[1] for r in registrations[:3])) == 3
+    assert len(changes) == 6  # (initial + message_loss + conversation update) * 2
+    assert json.loads(acknowledgements[0].split(":", 3)[3])["name"] == "trouter.processed_message_loss"
+    assert json.loads(acknowledgements[1].split(":", 3)[3])["id"] == 1
