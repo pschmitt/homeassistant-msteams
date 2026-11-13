@@ -26,6 +26,9 @@ from .trouter import TeamsTrouter
 
 _LOGGER = logging.getLogger(__name__)
 
+CALENDAR_ATTEMPTS = 2
+CALENDAR_RETRY_DELAY = 2.0
+
 
 def _parse_iso(iso_str: str | None) -> datetime | None:
     """Safely parse ISO datetime string."""
@@ -105,6 +108,8 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._previous_meeting_id: str | None = None
         self._previous_meeting_data: dict[str, Any] | None = None
         self._sent_reminders: set[str] = set()
+        self._last_active_call: dict[str, Any] | None = None
+        self._last_unread_count = 0
         self._event_listeners: list[Any] = []
         self._push_refresh_task: asyncio.Task | None = None
         self.trouter = TeamsTrouter(
@@ -165,22 +170,72 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception as err:
                 _LOGGER.exception("Error dispatching meeting event: %s", err)
 
+    async def _fetch_core(
+        self, now: datetime
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None, int]:
+        """Fetch presence, calendar and call state.
+
+        Presence is essential: if it fails, the whole update fails. The calendar
+        and the active call/unread count are secondary and Microsoft's endpoints
+        for them are flaky, so a transient failure there keeps the last known
+        values instead of making every entity unavailable. Authentication errors
+        always propagate so that recovery can run.
+        """
+        presence = await self.client.get_presence()
+
+        previous = self.data or {}
+        meetings: list[dict[str, Any]]
+        try:
+            meetings = await self._fetch_calendar(now)
+        except TeamsAuthError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Calendar fetch failed (%s); keeping the last known meetings",
+                str(err) or type(err).__name__,
+            )
+            meetings = previous.get("meetings") or []
+
+        try:
+            active_call, unread_count = await self.client.get_active_call_and_unread()
+            self._last_active_call = active_call
+            self._last_unread_count = unread_count
+        except TeamsAuthError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Active call/unread fetch failed (%s); keeping the last known state",
+                str(err) or type(err).__name__,
+            )
+            active_call = self._last_active_call
+            unread_count = self._last_unread_count
+
+        return presence, meetings, active_call, unread_count
+
+    async def _fetch_calendar(self, now: datetime) -> list[dict[str, Any]]:
+        """Fetch upcoming meetings, retrying once on a transient failure."""
+        last_err: Exception | None = None
+        for attempt in range(CALENDAR_ATTEMPTS):
+            if attempt:
+                await asyncio.sleep(CALENDAR_RETRY_DELAY)
+            try:
+                return await self.client.get_calendar_meetings(
+                    start_date=now - timedelta(minutes=30),
+                    end_date=now + timedelta(days=7),
+                    limit=15,
+                )
+            except TeamsAuthError:
+                raise
+            except Exception as err:  # noqa: BLE001
+                last_err = err
+        assert last_err is not None
+        raise last_err
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch latest data from Teams API and browser-daemon."""
         try:
-            # 1. Fetch Presence
-            presence = await self.client.get_presence()
-
-            # 2. Fetch Upcoming Calendar Meetings
             now = datetime.now(UTC)
-            meetings = await self.client.get_calendar_meetings(
-                start_date=now - timedelta(minutes=30),
-                end_date=now + timedelta(days=7),
-                limit=15,
-            )
-
-            # 3. Fetch Active Call and Unread Chats Count
-            active_call, unread_count = await self.client.get_active_call_and_unread()
+            presence, meetings, active_call, unread_count = await self._fetch_core(now)
 
             # Clear any previously registered auth issues
             ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
@@ -201,14 +256,8 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if recovered:
                 try:
-                    presence = await self.client.get_presence()
                     now = datetime.now(UTC)
-                    meetings = await self.client.get_calendar_meetings(
-                        start_date=now - timedelta(minutes=30),
-                        end_date=now + timedelta(days=7),
-                        limit=15,
-                    )
-                    active_call, unread_count = await self.client.get_active_call_and_unread()
+                    presence, meetings, active_call, unread_count = await self._fetch_core(now)
                     ir.async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self.entry.entry_id}")
                     ir.async_delete_issue(
                         self.hass, "homeassistant", f"config_entry_reauth_{self.entry.entry_id}"

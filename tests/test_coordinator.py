@@ -228,3 +228,86 @@ async def test_switching_meetings_ends_previous_before_starting_next():
         (EVENT_MEETING_ENDED, "one"),
         (EVENT_MEETING_STARTED, "two"),
     ]
+
+
+def _make_coordinator(monkeypatch):
+    monkeypatch.setattr("custom_components.msteams.coordinator.CALENDAR_RETRY_DELAY", 0)
+    entry = MagicMock()
+    entry.entry_id = "entry123"
+    entry.title = "Alice"
+    entry.options = {}
+    entry.data = {}
+    client = MagicMock()
+    client.browser_daemon_url = None
+    client.unread_chats = []
+    client.auth = MagicMock()
+    client.auth.user_mri = "8:orgid:alice"
+    client.get_presence = AsyncMock(
+        return_value={"availability": "Available", "activity": "Available"}
+    )
+    client.get_calendar_meetings = AsyncMock(return_value=[])
+    client.get_active_call_and_unread = AsyncMock(return_value=(None, 2))
+    return TeamsDataUpdateCoordinator(MagicMock(), entry, client), client
+
+
+@pytest.mark.asyncio
+async def test_calendar_failure_keeps_last_meetings(monkeypatch):
+    """A failing calendar must not make the whole update fail."""
+    from custom_components.msteams.api import TeamsApiError
+
+    coordinator, client = _make_coordinator(monkeypatch)
+    now = datetime.now(UTC)
+    meeting = {
+        "id": "m1",
+        "subject": "Planning",
+        "start_time": (now + timedelta(hours=2)).isoformat(),
+        "end_time": (now + timedelta(hours=3)).isoformat(),
+    }
+    client.get_calendar_meetings = AsyncMock(return_value=[meeting])
+    coordinator.data = await coordinator._async_update_data()
+    assert coordinator.data["next_meeting"]["id"] == "m1"
+
+    client.get_calendar_meetings = AsyncMock(
+        side_effect=TeamsApiError("Calendar API failed (HTTP 503)")
+    )
+    data = await coordinator._async_update_data()
+
+    assert client.get_calendar_meetings.await_count == 2
+    assert data["meetings"] == [meeting]
+    assert data["presence"]["availability"] == "Available"
+    assert data["unread_chats"] == 2
+
+
+@pytest.mark.asyncio
+async def test_calendar_retry_recovers(monkeypatch):
+    from custom_components.msteams.api import TeamsApiError
+
+    coordinator, client = _make_coordinator(monkeypatch)
+    client.get_calendar_meetings = AsyncMock(side_effect=[TeamsApiError("HTTP 500"), []])
+    data = await coordinator._async_update_data()
+    assert data["meetings"] == []
+    assert client.get_calendar_meetings.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_active_call_failure_keeps_last_state(monkeypatch):
+    coordinator, client = _make_coordinator(monkeypatch)
+    call = {"thread_id": "19:t@thread.v2", "title": "Standup", "url": "https://example.com/j"}
+    client.get_active_call_and_unread = AsyncMock(return_value=(call, 4))
+    coordinator.data = await coordinator._async_update_data()
+    assert coordinator.data["in_a_meeting"] is True
+
+    client.get_active_call_and_unread = AsyncMock(side_effect=TimeoutError())
+    data = await coordinator._async_update_data()
+    assert data["in_a_meeting"] is True
+    assert data["unread_chats"] == 4
+
+
+@pytest.mark.asyncio
+async def test_presence_failure_still_fails_update(monkeypatch):
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator, client = _make_coordinator(monkeypatch)
+    client.get_presence = AsyncMock(side_effect=RuntimeError("boom"))
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
