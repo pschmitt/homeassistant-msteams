@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import TeamsApiClient, TeamsAuthError
+from .api import TeamsApiClient, TeamsApiError, TeamsAuthError
 from .const import (
     CONF_INCLUDE_OWN_MESSAGES,
     CONF_POLL_INTERVAL,
@@ -110,6 +110,9 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sent_reminders: set[str] = set()
         self._last_active_call: dict[str, Any] | None = None
         self._last_unread_count = 0
+        self._failing_sources: set[str] = set()
+        self._last_source_errors: dict[str, Exception] = {}
+        self._stale_sources: list[str] = []
         self._event_listeners: list[Any] = []
         self._push_refresh_task: asyncio.Task | None = None
         self.trouter = TeamsTrouter(
@@ -170,46 +173,79 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception as err:
                 _LOGGER.exception("Error dispatching meeting event: %s", err)
 
+    async def _fetch_source(self, name: str, fetch: Any, fallback: Any) -> tuple[Any, bool]:
+        """Run one data source in isolation.
+
+        On a transient failure the fallback (the last known value) is returned
+        so the other sources still update. The first failure of an outage is
+        logged as a warning, repeats at debug level, and recovery is logged
+        once. Authentication errors always propagate so recovery can run.
+        """
+        try:
+            result = await fetch()
+        except TeamsAuthError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            self._last_source_errors[name] = err
+            reason = str(err) or type(err).__name__
+            if name not in self._failing_sources:
+                self._failing_sources.add(name)
+                _LOGGER.warning("%s fetch failed (%s); keeping the last known value", name, reason)
+            else:
+                _LOGGER.debug("%s fetch still failing (%s)", name, reason)
+            return fallback(), False
+        if name in self._failing_sources:
+            self._failing_sources.discard(name)
+            _LOGGER.info("%s fetch recovered", name)
+        return result, True
+
     async def _fetch_core(
         self, now: datetime
     ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None, int]:
-        """Fetch presence, calendar and call state.
+        """Fetch presence, calendar and call state independently.
 
-        Presence is essential: if it fails, the whole update fails. The calendar
-        and the active call/unread count are secondary and Microsoft's endpoints
-        for them are flaky, so a transient failure there keeps the last known
-        values instead of making every entity unavailable. Authentication errors
-        always propagate so that recovery can run.
+        Each source falls back to its last known value when it fails, so one
+        flaky Microsoft endpoint never blanks the others. Only when every
+        source fails at once is the update reported as failed.
         """
-        presence = await self.client.get_presence()
-
         previous = self.data or {}
-        meetings: list[dict[str, Any]]
-        try:
-            meetings = await self._fetch_calendar(now)
-        except TeamsAuthError:
-            raise
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
-                "Calendar fetch failed (%s); keeping the last known meetings",
-                str(err) or type(err).__name__,
-            )
-            meetings = previous.get("meetings") or []
 
-        try:
-            active_call, unread_count = await self.client.get_active_call_and_unread()
+        presence, presence_ok = await self._fetch_source(
+            "Presence",
+            self.client.get_presence,
+            lambda: previous.get("presence") or {},
+        )
+        meetings, calendar_ok = await self._fetch_source(
+            "Calendar",
+            lambda: self._fetch_calendar(now),
+            lambda: previous.get("meetings") or [],
+        )
+        call_state, call_ok = await self._fetch_source(
+            "Active call/unread",
+            self.client.get_active_call_and_unread,
+            lambda: (self._last_active_call, self._last_unread_count),
+        )
+        active_call, unread_count = call_state
+        if call_ok:
             self._last_active_call = active_call
             self._last_unread_count = unread_count
-        except TeamsAuthError:
-            raise
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
-                "Active call/unread fetch failed (%s); keeping the last known state",
-                str(err) or type(err).__name__,
-            )
-            active_call = self._last_active_call
-            unread_count = self._last_unread_count
 
+        if not (presence_ok or calendar_ok or call_ok):
+            errors = ", ".join(
+                f"{name}: {str(err) or type(err).__name__}"
+                for name, err in self._last_source_errors.items()
+            )
+            raise TeamsApiError(f"All Teams endpoints failed ({errors})")
+
+        self._stale_sources = sorted(
+            name
+            for name, ok in (
+                ("presence", presence_ok),
+                ("calendar", calendar_ok),
+                ("active_call", call_ok),
+            )
+            if not ok
+        )
         return presence, meetings, active_call, unread_count
 
     async def _fetch_calendar(self, now: datetime) -> list[dict[str, Any]]:
@@ -456,6 +492,7 @@ class TeamsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 recent_messages = (self.data or {}).get("recent_messages")
 
         return {
+            "stale_sources": list(self._stale_sources),
             "unread_messages": list(self.client.unread_chats),
             "recent_messages": recent_messages,
             "presence": presence,

@@ -304,10 +304,44 @@ async def test_active_call_failure_keeps_last_state(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_presence_failure_still_fails_update(monkeypatch):
+async def test_presence_failure_keeps_last_presence_and_updates_rest(monkeypatch):
+    coordinator, client = _make_coordinator(monkeypatch)
+    coordinator.data = await coordinator._async_update_data()
+    assert coordinator.data["stale_sources"] == []
+
+    client.get_presence = AsyncMock(side_effect=RuntimeError("boom"))
+    client.get_active_call_and_unread = AsyncMock(return_value=(None, 9))
+    data = await coordinator._async_update_data()
+
+    assert data["presence"]["availability"] == "Available"
+    assert data["unread_chats"] == 9
+    assert data["stale_sources"] == ["presence"]
+
+
+@pytest.mark.asyncio
+async def test_failure_logged_once_then_recovery(monkeypatch, caplog):
+    import logging
+
+    coordinator, client = _make_coordinator(monkeypatch)
+    client.get_presence = AsyncMock(side_effect=RuntimeError("boom"))
+    with caplog.at_level(logging.DEBUG):
+        await coordinator._async_update_data()
+        await coordinator._async_update_data()
+        client.get_presence = AsyncMock(return_value={"availability": "Busy"})
+        await coordinator._async_update_data()
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert any("Presence fetch recovered" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_all_sources_failing_fails_update(monkeypatch):
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
     coordinator, client = _make_coordinator(monkeypatch)
     client.get_presence = AsyncMock(side_effect=RuntimeError("boom"))
+    client.get_calendar_meetings = AsyncMock(side_effect=RuntimeError("boom"))
+    client.get_active_call_and_unread = AsyncMock(side_effect=RuntimeError("boom"))
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
