@@ -559,3 +559,24 @@ async def test_get_recent_messages_skips_own_by_default():
     }
     assert [m["text"] for m in await client.get_recent_messages()] == ["theirs"]
     assert len(await client.get_recent_messages(include_own=True)) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_presence_raises_instead_of_faking_available():
+    """A failing presence call must surface, not report a made-up 'Available'."""
+    from custom_components.msteams.api import TeamsApiError
+
+    client = TeamsApiClient.__new__(TeamsApiClient)
+    client._ensure_auth = AsyncMock()
+    client._headers = MagicMock(return_value={})
+
+    resp = MagicMock()
+    resp.status = 503
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=resp)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    client.auth = MagicMock()
+    client.auth.session.get = MagicMock(return_value=ctx)
+
+    with pytest.raises(TeamsApiError, match="HTTP 503"):
+        await client.get_presence()

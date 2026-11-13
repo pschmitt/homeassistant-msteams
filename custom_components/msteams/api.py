@@ -678,10 +678,9 @@ class TeamsApiClient:
                         .get("message", {})
                         .get("content", ""),
                     }
-                _LOGGER.debug("Presence endpoint returned status %s", resp.status)
-        except Exception:
-            _LOGGER.debug("Presence fetch failed")
-        return {"availability": "Available", "activity": "Available", "status_message": ""}
+                raise TeamsApiError(f"Presence API failed (HTTP {resp.status})")
+        except (TimeoutError, aiohttp.ClientError) as err:
+            raise TeamsApiError(f"Presence API unreachable: {type(err).__name__}") from err
 
     async def get_calendar_meetings(
         self,
