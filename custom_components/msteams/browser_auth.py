@@ -349,6 +349,7 @@ async def _main() -> int:
             client,
             os.environ.get("TEAMS_MCP_BROWSER_DAEMON_PROFILE", "work"),
             _validate_refresh_token,
+            node_group=os.environ.get("TEAMS_MCP_BROWSER_DAEMON_NODE_GROUP"),
         )
 
         spaces_token = creds.get("spaces_token")
