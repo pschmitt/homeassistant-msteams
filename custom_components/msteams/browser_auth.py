@@ -87,6 +87,7 @@ async def acquire_browser_auth(
     login: Callable[[str, str, str | None], Awaitable[str]] | None = None,
     async_validate: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     node_group: str | None = None,
+    retain_for_interaction: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Acquire auth state via a browser-daemon client and release owned resources."""
     profile = profile.strip()
@@ -204,7 +205,7 @@ async def acquire_browser_auth(
                 _LOGGER.debug("Waiting for Teams authentication export")
             if login is not None and not login_attempted and time.monotonic() >= login_ready_at:
                 login_attempted = True
-                retain_for_login = True
+                retain_for_login = retain_for_interaction
                 outcome = await login(session_id, tab_id, node_name)
                 if outcome != "authenticated":
                     raise BrowserInteractionRequired(

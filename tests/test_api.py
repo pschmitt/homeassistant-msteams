@@ -271,6 +271,7 @@ async def test_auth_self_recovery_on_refresh_failure():
     assert success is True
     assert auth.refresh_token == "new_recovered_token"
     auth.async_from_browser_daemon.assert_awaited_once()
+    assert auth.async_from_browser_daemon.await_args.kwargs["retain_for_interaction"] is False
 
 
 @pytest.mark.asyncio
@@ -347,7 +348,14 @@ async def test_browser_auth_retries_rejected_credentials_once(monkeypatch, caplo
     calls = []
 
     async def acquire(
-        _client, _profile, _parse, *, login=None, async_validate=None, node_group=None
+        _client,
+        _profile,
+        _parse,
+        *,
+        login=None,
+        async_validate=None,
+        node_group=None,
+        retain_for_interaction=True,
     ):
         calls.append("acquire")
         with pytest.raises(TeamsAuthError):
@@ -400,7 +408,14 @@ async def test_browser_auth_rejects_selected_account_mismatch(monkeypatch):
     login = AsyncMock(return_value=("authenticated", "expected@example.com"))
 
     async def acquire(
-        _client, _profile, _parse, *, login=None, async_validate=None, node_group=None
+        _client,
+        _profile,
+        _parse,
+        *,
+        login=None,
+        async_validate=None,
+        node_group=None,
+        retain_for_interaction=True,
     ):
         await login("session", "tab", "node")
         try:

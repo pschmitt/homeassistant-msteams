@@ -239,6 +239,20 @@ async def test_pending_login_keeps_own_page_for_repair():
 
 
 @pytest.mark.asyncio
+async def test_automatic_recovery_closes_pending_login_tab():
+    client = client_with_session()
+    login = AsyncMock(return_value="needs_interaction")
+
+    with pytest.raises(BrowserInteractionRequired):
+        await acquire_browser_auth(
+            client, "work", lambda _: {}, login=login, retain_for_interaction=False
+        )
+
+    client.close_tab.assert_awaited_once_with("tab", node="node")
+    client.delete_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_owned_pending_login_gets_extended_timeout():
     client = client_with_session(owned=True)
     login = AsyncMock(return_value="needs_interaction")

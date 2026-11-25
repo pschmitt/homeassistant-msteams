@@ -231,6 +231,7 @@ class TeamsAuth:
                 rbw_entry_id=self.rbw_entry_id,
                 rbw_item_id=self.rbw_item_id,
                 prefer_passkey=self.prefer_passkey,
+                retain_for_interaction=False,
             )
             if self.user_mri and not _same_user_mri(new_auth.user_mri, self.user_mri):
                 raise TeamsAuthError("Browser authentication belongs to a different Teams account")
@@ -518,6 +519,7 @@ class TeamsAuth:
         prefer_passkey: bool = True,
         node_group: str | None = None,
         browser_daemon_entry_id: str | None = None,
+        retain_for_interaction: bool = True,
     ) -> TeamsAuth:
         """Acquire credentials through the selected Browser Daemon integration or an override."""
         bd_client = cls._browser_daemon(
@@ -580,6 +582,7 @@ class TeamsAuth:
                 login=login if hass is not None and rbw_entry_id and rbw_item_id else None,
                 async_validate=validate_credentials,
                 node_group=node_group,
+                retain_for_interaction=retain_for_interaction,
             )
         except BrowserAuthError:
             raise TeamsAuthError(
